@@ -1,0 +1,24 @@
+{
+  "version": "1",
+  "comment": "Paths the daemon copies from the template into the mock workspace on every ensure(). Anything not listed here is the planner's content and is never overwritten: src/screens/** (except the first copy of _example) and specs/**.",
+  "paths": [
+    ".npmrc",
+    ".gitignore",
+    "pnpm-workspace.yaml",
+    "package.json",
+    "pnpm-lock.yaml",
+    "vite.config.ts",
+    "tsconfig.json",
+    "index.html",
+    "CLAUDE.md",
+    ".claude/",
+    "scripts/",
+    "src/main.tsx",
+    "src/screens.ts",
+    "src/ScreenIndex.tsx",
+    "src/PreviewError.tsx",
+    "src/frames/",
+    "src/index.css"
+  ],
+  "seedPaths": ["src/screens/_example/", "specs/.gitkeep"]
+}

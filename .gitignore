@@ -1,0 +1,16 @@
+node_modules/
+# Runtime state of the GJC agent workflows (session-scoped, never shared).
+.gjc/
+# The connected repo is its own git repository (authored in-tree, pushed to
+# GitHub separately); the hub clones it like any other remote.
+/connected-repo/
+dist/
+*.log
+.DS_Store
+.hub/
+packages/web/test/ui-e2e.png
+packages/web/test/ui-history-e2e.png
+packages/web/test/ui-composer-e2e.png
+packages/web/test/ui-settings-dark.png
+packages/web/test/ui-settings-light.png
+packages/web/test/ui-planner-e2e.png

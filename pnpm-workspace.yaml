@@ -1,0 +1,6 @@
+packages:
+  - 'packages/*'
+
+# Vite depends on esbuild, whose install script fetches the platform binary.
+allowBuilds:
+  esbuild: true

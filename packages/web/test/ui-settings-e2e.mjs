@@ -1,0 +1,164 @@
+/**
+ * Settings panel check. Free: no daemon, no model turn.
+ *
+ * The panel is reachable from the connect screen on purpose — the theme is a
+ * browser preference and should not need a daemon to change — so the whole
+ * thing can be driven against the built app served from disk.
+ *
+ * Prerequisite: `pnpm --filter @agent-hub/web build`
+ */
+import { createServer } from "node:http";
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(here, "..", "..", "..");
+const webDist = join(repoRoot, "packages", "web", "dist");
+const PORT = 5397;
+const APP = `http://127.0.0.1:${PORT}/`;
+
+const results = [];
+function check(name, passed, detail = "") {
+  if (typeof passed !== "boolean") throw new Error(`check("${name}") was called without a verdict`);
+  results.push({ name, passed });
+  console.log(`${passed ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
+}
+
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
+
+function serveDist() {
+  const server = createServer((req, res) => {
+    const requested = (req.url ?? "/").split("?")[0];
+    let file = join(webDist, requested === "/" ? "index.html" : requested);
+    if (!existsSync(file) || statSync(file).isDirectory()) file = join(webDist, "index.html");
+    res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
+    res.end(readFileSync(file));
+  });
+  return new Promise((ok) => server.listen(PORT, "127.0.0.1", () => ok(server)));
+}
+
+const theme = (page) => page.evaluate(() => document.documentElement.dataset.theme);
+const stored = (page) =>
+  page.evaluate(() => JSON.parse(localStorage.getItem("agent-hub.settings") ?? "null"));
+
+async function main() {
+  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @agent-hub/web build");
+
+  const server = await serveDist();
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const failures = [];
+  page.on("pageerror", (e) => failures.push(e.message));
+  page.on("console", (m) => m.type() === "error" && failures.push(m.text()));
+
+  try {
+    // 1. an unconfigured client keeps the console palette, whatever the OS says.
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto(APP);
+    await page.waitForSelector(".connect__cmd", { timeout: 10000 });
+    check("no stored settings means the dark palette stands", (await theme(page)) === "dark");
+    check("nothing is written to storage until something is changed", (await stored(page)) === null);
+
+    // 2. settings open from the connect screen, before any daemon exists.
+    await page.getByRole("button", { name: "설정" }).click();
+    await page.waitForSelector('[role="dialog"][aria-label="설정"]', { timeout: 5000 });
+    await page.screenshot({ path: join(here, "ui-settings-dark.png") });
+    const groups = await page.locator(".settings__groupTitle").allInnerTexts();
+    check(
+      "the panel offers only what a planner sets",
+      ["화면", "동작", "연결 레포", "데몬"].every((g) => groups.includes(g)) && groups.length === 4,
+      groups.join(", "),
+    );
+    // No daemon yet, so the repo fields wait for one instead of pretending.
+    check(
+      "repo url and PAT inputs wait for a daemon",
+      (await page.getByLabel("연결 레포 주소").isDisabled()) === true &&
+        (await page.getByLabel("연결 레포 개인 액세스 토큰").isDisabled()) === true,
+    );
+
+    // 3. theme applies live and persists.
+    await page.getByLabel("테마").selectOption("light");
+    // A frame, not a reload: the attribute lands from React's commit.
+    await page
+      .waitForFunction(() => document.documentElement.dataset.theme === "light", undefined, {
+        timeout: 3000,
+      })
+      .catch(() => undefined);
+    check("choosing light repaints without a reload", (await theme(page)) === "light");
+    // Surfaces cross-fade for 120ms; let them settle so the shot is the real thing.
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(here, "ui-settings-light.png") });
+    const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    check("light theme actually swaps the surface colour", bodyBg === "rgb(255, 255, 255)", bodyBg);
+    check("the choice is stored", (await stored(page))?.theme === "light");
+
+    // 4. "system" follows the OS, in both directions, without a reload.
+    await page.getByLabel("테마").selectOption("system");
+    check("system resolves to the OS light mode", (await theme(page)) === "light");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark", undefined, {
+      timeout: 3000,
+    });
+    check("switching the OS to dark moves the app with it", (await theme(page)) === "dark");
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // 5. behaviour choices survive a reload.
+    await page.getByLabel("보내기 키").selectOption("modEnter");
+    await page.getByLabel("기획을 삭제하기 전에 확인").uncheck();
+    const before = await stored(page);
+    check(
+      "behaviour choices are stored together",
+      before?.sendKey === "modEnter" && before?.confirmBeforeDelete === false,
+      JSON.stringify(before),
+    );
+
+    await page.reload();
+    await page.waitForSelector(".connect__cmd", { timeout: 10000 });
+    check("theme is applied on load, not after a click", (await theme(page)) === "light");
+    await page.getByRole("button", { name: "설정" }).click();
+    await page.waitForSelector('[role="dialog"][aria-label="설정"]', { timeout: 5000 });
+    check(
+      "the panel reopens on the stored values",
+      (await page.getByLabel("보내기 키").inputValue()) === "modEnter",
+    );
+
+    // 6. a stored blob that is not a legal Settings must not brick the app.
+    await page.evaluate(() =>
+      localStorage.setItem(
+        "agent-hub.settings",
+        JSON.stringify({ theme: "neon", sendKey: 7, confirmBeforeDelete: "yes" }),
+      ),
+    );
+    await page.reload();
+    await page.waitForSelector(".connect__cmd", { timeout: 10000 });
+    check("nonsense in storage falls back to the defaults", (await theme(page)) === "dark");
+    await page.getByRole("button", { name: "설정" }).click();
+    check(
+      "a non-string send key falls back too",
+      (await page.getByLabel("보내기 키").inputValue()) === "enter",
+    );
+
+    // 7. Escape closes without touching anything.
+    await page.keyboard.press("Escape");
+    check(
+      "escape closes the panel",
+      (await page.locator('[role="dialog"][aria-label="설정"]').count()) === 0,
+    );
+
+    check("no page errors while driving the panel", failures.length === 0, failures.join(" | "));
+  } finally {
+    await browser.close();
+    server.close();
+  }
+
+  const failed = results.filter((r) => !r.passed);
+  console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+  if (failed.length) {
+    for (const f of failed) console.log(`  FAILED: ${f.name}`);
+    process.exit(1);
+  }
+}
+
+await main();

@@ -1,0 +1,28 @@
+{
+  "name": "agent-hub",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Turns a planning document into working screens built from the company design system, in a chat a planner can use. Each user runs their own daemon and signs in with their own Claude subscription.",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "dev:daemon": "pnpm --filter @agent-hub/daemon dev",
+    "dev:web": "pnpm --filter @agent-hub/web dev",
+    "doctor": "pnpm --filter @agent-hub/daemon doctor",
+    "test:daemon": "node packages/daemon/test/e2e.mjs",
+    "test": "pnpm test:unit && pnpm test:repo && pnpm test:settings && pnpm test:daemon && pnpm test:planner",
+    "test:smoke": "node packages/web/test/smoke-live.mjs",
+    "test:settings": "node packages/web/test/ui-settings-e2e.mjs",
+    "test:unit": "node --test packages/daemon/test/platform.test.mjs && pnpm test:repo-unit",
+    "test:repo-unit": "node --test packages/daemon/test/repo.test.mjs packages/daemon/test/translate.test.mjs",
+    "test:repo": "node packages/daemon/test/repo-e2e.mjs",
+    "test:planner": "node packages/web/test/ui-planner-e2e.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "playwright": "1.62.0",
+    "typescript": "^5.9.2"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

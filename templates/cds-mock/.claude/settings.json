@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": ["Bash", "Read(./node_modules/**)", "Edit(/src/screens/**)", "Edit(/specs/**)"],
+    "deny": [
+      "Edit(/src/main.tsx)",
+      "Edit(/src/screens.ts)",
+      "Edit(/src/ScreenIndex.tsx)",
+      "Edit(/src/PreviewError.tsx)",
+      "Edit(/src/index.css)",
+      "Edit(/src/frames/**)",
+      "Edit(/src/screens/_example/**)",
+      "Edit(/scripts/**)",
+      "Edit(/package.json)",
+      "Edit(/pnpm-lock.yaml)",
+      "Edit(/vite.config.ts)",
+      "Edit(/tsconfig.json)",
+      "Edit(/index.html)",
+      "Edit(/CLAUDE.md)",
+      "Edit(/.claude/**)",
+      "Edit(/.npmrc)",
+      "Bash(rm *)",
+      "Bash(sudo *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(git push *)",
+      "Bash(git commit *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm remove *)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm dev *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(yarn *)",
+      "WebFetch"
+    ]
+  }
+}

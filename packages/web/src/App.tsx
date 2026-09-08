@@ -1,0 +1,146 @@
+import { useState } from "react";
+import { useDaemon } from "./daemon-client";
+import { Planner } from "./Planner";
+import { SettingsDialog } from "./SettingsDialog";
+import { useSettings } from "./settings";
+import { GearIcon } from "./icons";
+
+const URL_KEY = "agent-hub.daemon-url";
+
+function ConnectScreen({
+  onConnect,
+  error,
+  onOpenSettings,
+}: {
+  onConnect: (url: string) => void;
+  error: string | null;
+  onOpenSettings: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText("pnpm dev:daemon");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard can be blocked; the command is visible to retype anyway.
+    }
+  };
+
+  return (
+    <div className="connect">
+      <button
+        type="button"
+        className="connect__settings ghost"
+        aria-label="설정"
+        title="설정"
+        onClick={onOpenSettings}
+      >
+        <GearIcon size={15} />
+      </button>
+      <h1>agent-hub</h1>
+      <p>
+        이 컴퓨터에서 데몬을 켠 다음, 데몬이 출력한 주소를 붙여 넣어 주세요. 데몬은 이미 로그인해 둔
+        Claude Code를 그대로 사용하므로, 본인 구독으로 실행됩니다.
+      </p>
+
+      <div className="connect__step">
+        <span className="connect__stepnum">1</span>
+        <pre className="connect__cmd">
+          <code>pnpm dev:daemon</code>
+          <button type="button" className="ghost" onClick={() => void copy()}>
+            {copied ? "복사됨 ✓" : "복사"}
+          </button>
+        </pre>
+      </div>
+      <div className="connect__step connect__step--fill">
+        <span className="connect__stepnum">2</span>
+        <div className="connect__inputrow">
+          <input
+            autoFocus
+            value={value}
+            placeholder="ws://127.0.0.1:7823?token=…"
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && value.trim() && onConnect(value.trim())}
+          />
+          <button
+            type="button"
+            className="primary"
+            disabled={!value.trim()}
+            onClick={() => onConnect(value.trim())}
+          >
+            연결
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="notice notice--error">
+          <span className="notice__text">{error}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function App() {
+  const [url, setUrl] = useState<string | null>(() => localStorage.getItem(URL_KEY));
+  // The planner view needs the whole connection, not a copy of each field.
+  const daemon = useDaemon(url);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { settings, update: updateSettings } = useSettings();
+
+  const connect = (next: string) => {
+    localStorage.setItem(URL_KEY, next);
+    setUrl(next);
+    setSettingsOpen(false);
+  };
+
+  /** Drop the stored URL and go back to the connect screen. Nothing is deleted. */
+  const forgetUrl = () => {
+    localStorage.removeItem(URL_KEY);
+    setUrl(null);
+    setSettingsOpen(false);
+  };
+
+  const settingsDialog = settingsOpen ? (
+    <SettingsDialog
+      settings={settings}
+      onChange={updateSettings}
+      daemonUrl={url}
+      status={daemon.status}
+      connection={daemon.connection}
+      daemon={daemon}
+      onReconnect={connect}
+      onForgetUrl={forgetUrl}
+      onClose={() => setSettingsOpen(false)}
+    />
+  ) : null;
+
+  if (!url || daemon.connection === "error") {
+    return (
+      <>
+        <ConnectScreen
+          onConnect={connect}
+          error={daemon.connectionError}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+        {settingsDialog}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Planner
+        daemon={daemon}
+        sendKey={settings.sendKey}
+        confirmBeforeDelete={settings.confirmBeforeDelete}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      {settingsDialog}
+    </>
+  );
+}

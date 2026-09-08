@@ -1,0 +1,12 @@
+@import 'tailwindcss';
+@import '@colosseumcoinckr/cds/globals.css';
+@import '@colosseumcoinckr/cds/themes/dark.css';
+
+/* Our own screens. cds source is covered by cds's own @source. */
+@source './**/*.{ts,tsx}';
+
+html,
+body,
+#root {
+  height: 100%;
+}

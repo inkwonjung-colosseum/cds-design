@@ -1,0 +1,25 @@
+{
+  "name": "@agent-hub/daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "agent-hub-daemon": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "concurrently -n tsc,daemon -c blue,green \"tsc -p tsconfig.json --watch --preserveWatchOutput\" \"node --watch dist/index.js\"",
+    "start": "node dist/index.js",
+    "doctor": "node dist/index.js doctor"
+  },
+  "dependencies": {
+    "@agent-hub/protocol": "workspace:*",
+    "@anthropic-ai/claude-agent-sdk": "0.3.263",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/ws": "^8.18.1"
+  }
+}

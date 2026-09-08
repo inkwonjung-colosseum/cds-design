@@ -1,0 +1,418 @@
+/**
+ * Connected-repo unit checks — no Claude, no network. git remotes are local
+ * paths created by the fixture helper, so even the phase-transition tests run
+ * offline.
+ *
+ * These cover the parts that decide what the planner ends up with: what a
+ * repo's drafthouse.json may declare, how the workspace moves through its
+ * phases, how an attached document is named on disk, how the PAT is kept out
+ * of urls and errors, how workspace trust is recorded, and how the two
+ * failure modes a planner cannot debug (no pnpm, no registry token) are
+ * recognised.
+ *
+ * Run: node --test packages/daemon/test/repo.test.mjs
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  authenticatedUrl,
+  parseDrafthouseConfig,
+  readDrafthouseConfig,
+  saveSpecFiles,
+  specFileName,
+  trustWorkspace,
+  REPO_URL_MISSING_DETAIL,
+  RepoWorkspace,
+} from "../dist/repo.js";
+import { detectsRegistryAuthFailure, pnpmCandidates } from "../dist/environment.js";
+import { createFixtureRepo, freePort } from "./fixture-repo.mjs";
+
+const never = () => false;
+
+function workdir(prefix) {
+  return mkdtempSync(join(tmpdir(), prefix));
+}
+
+// ---------------------------------------------------------------------------
+// drafthouse.json contract
+// ---------------------------------------------------------------------------
+
+test("a full drafthouse.json parses into its typed shape", () => {
+  const config = parseDrafthouseConfig(
+    JSON.stringify({
+      install: "pnpm install",
+      check: "pnpm check",
+      build: "pnpm build",
+      preview: { command: "pnpm dev", port: 5274 },
+      registry: { host: "npm.pkg.github.com", scope: "@colosseumcoinckr" },
+    }),
+  );
+  assert.equal(config.install, "pnpm install");
+  assert.equal(config.check, "pnpm check");
+  assert.equal(config.build, "pnpm build");
+  assert.deepEqual(config.preview, { command: "pnpm dev", port: 5274 });
+  assert.deepEqual(config.registry, { host: "npm.pkg.github.com", scope: "@colosseumcoinckr" });
+});
+
+test("a minimal drafthouse.json needs only preview", () => {
+  const config = parseDrafthouseConfig('{"preview":{"command":"node server.mjs","port":3000}}');
+  assert.equal(config.install, undefined);
+  assert.equal(config.registry, undefined);
+  assert.deepEqual(config.preview, { command: "node server.mjs", port: 3000 });
+});
+
+test("validation errors are Korean, name the field, and say what it should be", () => {
+  assert.throws(() => parseDrafthouseConfig("{}"), /preview가 없습니다/);
+  assert.throws(
+    () => parseDrafthouseConfig('{"preview":{"port":5274}}'),
+    /preview\.command가 없습니다/,
+  );
+  assert.throws(
+    () => parseDrafthouseConfig('{"preview":{"command":"pnpm dev"}}'),
+    /preview\.port가 잘못되었습니다.*1~65535/s,
+  );
+  for (const port of [0, 65536, "5274", 5274.5]) {
+    assert.throws(
+      () => parseDrafthouseConfig(JSON.stringify({ preview: { command: "x", port } })),
+      /preview\.port가 잘못되었습니다/,
+      `port ${JSON.stringify(port)} must be rejected`,
+    );
+  }
+  assert.throws(
+    () => parseDrafthouseConfig('{"install":3,"preview":{"command":"x","port":1}}'),
+    /install는 실행할 명령을 문자열로 적어야 합니다/,
+  );
+  assert.throws(
+    () => parseDrafthouseConfig('{"registry":{},"preview":{"command":"x","port":1}}'),
+    /registry는 \{ "host", "scope" \} 형태여야 합니다/,
+  );
+  assert.throws(() => parseDrafthouseConfig("{not json"), /drafthouse\.json을 해석할 수 없습니다/);
+  assert.throws(() => parseDrafthouseConfig("[]"), /drafthouse\.json은 객체여야 합니다/);
+});
+
+test("a repo without drafthouse.json says so instead of guessing", () => {
+  const root = workdir("hub-repo-empty-");
+  try {
+    assert.throws(() => readDrafthouseConfig(root), /drafthouse\.json이 없습니다/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PAT handling
+// ---------------------------------------------------------------------------
+
+test("the PAT rides inside https urls only, and never other schemes", () => {
+  assert.equal(
+    authenticatedUrl("https://github.com/org/repo.git", "ghp_secret"),
+    "https://ghp_secret@github.com/org/repo.git",
+  );
+  assert.equal(authenticatedUrl("https://github.com/org/repo.git", null), "https://github.com/org/repo.git");
+  assert.equal(authenticatedUrl("git@github.com:org/repo.git", "ghp_secret"), "git@github.com:org/repo.git");
+});
+
+test("a failed clone never repeats the PAT in its detail", async () => {
+  // A RepoWorkspace may record trust; keep that away from the real home.
+  process.env.CLAUDE_CONFIG_DIR = workdir("hub-repo-trust-away-");
+  const broadcasts = [];
+  const workspace = new RepoWorkspace({
+    root: join(workdir("hub-repo-nope-"), "work"),
+    // A refused localhost connection fails fast without any network access,
+    // and git quotes the (token-bearing) url in its error output.
+    url: "https://127.0.0.1:1/org/repo.git",
+    pat: "ghp_super_secret",
+    onStatus: (status) => broadcasts.push(status),
+  });
+  try {
+    const status = await workspace.sync();
+    assert.equal(status.phase, "error");
+    assert.equal(status.patConfigured, true);
+    assert.ok(!JSON.stringify(broadcasts).includes("ghp_super_secret"), "the PAT must stay daemon-side");
+  } finally {
+    delete process.env.CLAUDE_CONFIG_DIR;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Phase transitions (local fixture remote, offline)
+// ---------------------------------------------------------------------------
+
+test("sync without a configured url stays missing and explains what to do", async () => {
+  const workspace = new RepoWorkspace({
+    root: join(workdir("hub-repo-nourl-"), "work"),
+    url: null,
+    onStatus: () => undefined,
+  });
+  const status = await workspace.sync();
+  assert.equal(status.phase, "missing");
+  assert.equal(status.detail, REPO_URL_MISSING_DETAIL);
+  assert.equal(status.previewUrl, null);
+});
+
+test("a clone from nowhere lands in error with the git output", async () => {
+  const workspace = new RepoWorkspace({
+    root: join(workdir("hub-repo-noclone-"), "work"),
+    url: join(workdir("hub-repo-noclone-"), "nope.git"),
+    onStatus: () => undefined,
+  });
+  const status = await workspace.sync();
+  assert.equal(status.phase, "error");
+  assert.match(status.detail, /git clone 실패/);
+});
+
+test("a seeded repo walks cloning → installing → starting, and a dead preview names itself", async () => {
+  const dir = workdir("hub-repo-phases-");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
+  try {
+    const port = await freePort();
+    // The preview command exits at once, so the run observes every working
+    // phase and then the honest failure, without waiting out a timeout.
+    const fixture = await createFixtureRepo({
+      dir: join(dir, "fixture"),
+      port,
+      previewCommand: 'node -e "process.exit(3)"',
+      installCommand: 'node -e ""',
+    });
+
+    const phases = [];
+    const workspace = new RepoWorkspace({
+      root: join(dir, "work"),
+      url: fixture.remote,
+      onStatus: (status) => phases.push(status.phase),
+    });
+    const status = await workspace.sync();
+
+    assert.equal(status.phase, "error");
+    for (const phase of ["cloning", "installing", "starting", "error"]) {
+      assert.ok(phases.includes(phase), `expected a ${phase} broadcast, got ${phases.join(" → ")}`);
+    }
+    assert.match(status.detail, /미리보기 서버가/);
+    assert.equal(status.previewUrl, null);
+  } finally {
+    delete process.env.CLAUDE_CONFIG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("changing the url discards the old clone and re-clones the new repo", async () => {
+  const dir = workdir("hub-repo-reclone-");
+  process.env.AGENT_HUB_REPO_SETTINGS = join(dir, "settings.json");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
+  try {
+    const port = await freePort();
+    const first = await createFixtureRepo({ dir: join(dir, "a"), port });
+    const second = await createFixtureRepo({ dir: join(dir, "b"), port });
+
+    const workspace = new RepoWorkspace({
+      root: join(dir, "work"),
+      url: first.remote,
+      onStatus: () => undefined,
+    });
+    assert.equal((await workspace.sync()).phase, "ready");
+    const marker = join(dir, "work", "sentinel-from-first-repo.txt");
+    writeFileSync(marker, "planner work that belongs to the OLD repository");
+
+    const moved = await workspace.update({ url: second.remote });
+    assert.equal(moved.phase, "ready", moved.detail ?? "");
+    assert.equal(moved.url, second.remote);
+    assert.throws(() => readFileSync(marker), /ENOENT/, "the old clone must be discarded, not merged");
+    assert.ok(existsSync(join(dir, "work", ".git")), "the new clone is in place");
+    assert.equal(
+      JSON.parse(readFileSync(join(dir, "settings.json"), "utf8")).url,
+      second.remote,
+      "the moved url is persisted",
+    );
+    await workspace.stop();
+  } finally {
+    delete process.env.AGENT_HUB_REPO_SETTINGS;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// specs/ naming
+// ---------------------------------------------------------------------------
+
+test("a spec file is dated, keeps its spaces, and loses path structure", () => {
+  assert.equal(
+    specFileName("회원 관리 기획서.pdf", "2026-09-08", never),
+    "2026-09-08-회원 관리 기획서.pdf",
+  );
+  assert.equal(
+    specFileName("../../etc/passwd.md", "2026-09-08", never),
+    "2026-09-08-etcpasswd.md",
+    "separators and the leading dots that hide a file both go",
+  );
+  assert.equal(specFileName("plan\u0007\u0000.txt", "2026-09-08", never), "2026-09-08-plan.txt");
+  assert.equal(specFileName("a:b*c?.txt", "2026-09-08", never), "2026-09-08-abc.txt");
+});
+
+test("a filename the planner already dated is not dated twice", () => {
+  assert.equal(
+    specFileName("2026-09-08-회원관리.md", "2026-09-08", never),
+    "2026-09-08-회원관리.md",
+  );
+  assert.equal(
+    specFileName("2026-09-05-회원관리.md", "2026-09-08", never),
+    "2026-09-05-회원관리.md",
+    "their date wins — it is the document's version, not the upload time",
+  );
+});
+
+test("a spec name stays under the 100 character cap", () => {
+  const name = specFileName(`${"가".repeat(300)}.pdf`, "2026-09-08", never);
+  assert.ok(name.length <= 100, `expected <= 100 chars, got ${name.length}`);
+  assert.ok(name.startsWith("2026-09-08-"));
+  assert.ok(name.endsWith(".pdf"));
+});
+
+test("colliding uploads get -2, -3 instead of overwriting", () => {
+  const existing = new Set(["2026-09-08-spec.pdf", "2026-09-08-spec-2.pdf"]);
+  assert.equal(
+    specFileName("spec.pdf", "2026-09-08", (candidate) => existing.has(candidate)),
+    "2026-09-08-spec-3.pdf",
+  );
+});
+
+test("an extension outside the allow list is refused with the list in the message", () => {
+  assert.throws(() => specFileName("기획서.docx", "2026-09-08", never), /docx/);
+  assert.throws(() => specFileName("noextension", "2026-09-08", never), /\.pdf/);
+  for (const extension of [".md", ".txt", ".pdf", ".png", ".jpg", ".jpeg", ".webp"]) {
+    assert.ok(specFileName(`plan${extension.toUpperCase()}`, "2026-09-08", never).endsWith(extension));
+  }
+});
+
+test("attachments land in specs/ and are reported as relative paths", () => {
+  const cwd = workdir("hub-specs-");
+  try {
+    const saved = saveSpecFiles(
+      cwd,
+      [
+        { name: "기획서.md", mediaType: "text/markdown", data: Buffer.from("# 회원").toString("base64") },
+        { name: "기획서.md", mediaType: "text/markdown", data: Buffer.from("# 주문").toString("base64") },
+      ],
+      new Date(2026, 8, 8),
+    );
+    assert.deepEqual(saved, ["specs/2026-09-08-기획서.md", "specs/2026-09-08-기획서-2.md"]);
+    assert.equal(readFileSync(join(cwd, saved[0]), "utf8"), "# 회원");
+    assert.equal(readFileSync(join(cwd, saved[1]), "utf8"), "# 주문");
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// pnpm discovery and registry failure
+// ---------------------------------------------------------------------------
+
+test("Windows looks for pnpm.cmd where its installers put it", () => {
+  const found = pnpmCandidates("win32", "C:/Users/dev", {
+    LOCALAPPDATA: "C:/Users/dev/AppData/Local",
+    APPDATA: "C:/Users/dev/AppData/Roaming",
+  });
+  assert.ok(
+    found.every((p) => p.endsWith("pnpm.cmd")),
+    `every Windows candidate must be a .cmd shim: ${found.join(", ")}`,
+  );
+  assert.ok(found.some((p) => p.includes("AppData/Local") || p.includes("AppData\\Local")));
+  assert.ok(found.some((p) => p.includes("npm")), "the corepack/npm global shim must be searched");
+  assert.ok(!found.some((p) => p.includes("homebrew")), "no macOS paths on the Windows branch");
+});
+
+test("PNPM_HOME wins over the guessed locations on both platforms", () => {
+  assert.equal(
+    pnpmCandidates("win32", "C:/Users/dev", { PNPM_HOME: "D:/pnpm" })[0],
+    join("D:/pnpm", "pnpm.cmd"),
+  );
+  assert.equal(
+    pnpmCandidates("linux", "/home/dev", { PNPM_HOME: "/opt/pnpm" })[0],
+    join("/opt/pnpm", "pnpm"),
+  );
+});
+
+test("macOS and Linux look in their own default pnpm homes", () => {
+  const mac = pnpmCandidates("darwin", "/Users/dev", {});
+  const linux = pnpmCandidates("linux", "/home/dev", {});
+  assert.ok(mac.some((p) => p.includes("/Library/pnpm")), "macOS standalone install");
+  assert.ok(mac.some((p) => p.includes("/opt/homebrew/")), "Homebrew must be searched");
+  assert.ok(!linux.some((p) => p.includes("Library")), "no macOS paths on the Linux branch");
+  assert.ok(linux.some((p) => p.includes(".local/share/pnpm") || p.includes(".local\\share\\pnpm")));
+  assert.ok([...mac, ...linux].every((p) => !p.endsWith(".cmd")), "no .cmd shims off Windows");
+});
+
+// A daemon started from a desktop app inherits a minimal PATH, so `which pnpm`
+// finds nothing and the candidate list is the only thing that saves the repo
+// commands. This machine's pnpm lives in ~/.local/bin next to node — the
+// layout the first live run failed on with "pnpm이 없습니다".
+test("pnpm is looked for beside node and in ~/.local/bin", () => {
+  const found = pnpmCandidates("darwin", "/Users/dev", {}, "/Users/dev/.local/bin");
+  assert.ok(found.includes(join("/Users/dev/.local/bin", "pnpm")), "the node-adjacent shim");
+  assert.ok(found.includes(join("/Users/dev", ".local", "bin", "pnpm")), "the native installer path");
+  const nvm = pnpmCandidates("linux", "/home/dev", {}, "/home/dev/.nvm/versions/node/v22.15.0/bin");
+  assert.equal(nvm[0], join("/home/dev/.nvm/versions/node/v22.15.0/bin", "pnpm"), "nvm shim wins");
+  assert.equal(
+    pnpmCandidates("win32", "C:/Users/dev", {}, "C:/Program Files/nodejs")[0],
+    join("C:/Program Files/nodejs", "pnpm.cmd"),
+  );
+});
+
+test("a private-registry rejection is told apart from an ordinary install failure", () => {
+  assert.ok(
+    detectsRegistryAuthFailure(
+      "ERR_PNPM_FETCH_401  GET https://npm.pkg.github.com/@colosseumcoinckr%2Fcds: Unauthorized - 401",
+    ),
+  );
+  assert.ok(detectsRegistryAuthFailure("GET https://npm.pkg.github.com/...: 403 Forbidden"));
+  assert.ok(!detectsRegistryAuthFailure("ERR_PNPM_NO_MATCHING_VERSION  No matching version found"));
+  assert.ok(!detectsRegistryAuthFailure("Progress: resolved 401 packages, downloaded 12"));
+});
+
+// ---------------------------------------------------------------------------
+// Workspace trust
+// ---------------------------------------------------------------------------
+
+test("trusting the repo clone keeps the rest of ~/.claude.json intact", () => {
+  const home = workdir("hub-trust-");
+  const root = join(home, "drafthouse", "repo");
+  mkdirSync(root, { recursive: true });
+  writeFileSync(
+    join(home, ".claude.json"),
+    JSON.stringify({
+      oauthAccount: { emailAddress: "dev@example.com" },
+      projects: { "/work/other": { hasTrustDialogAccepted: true, lastCost: 1.5 } },
+    }),
+  );
+
+  trustWorkspace(root, home);
+
+  const config = JSON.parse(readFileSync(join(home, ".claude.json"), "utf8"));
+  assert.equal(config.oauthAccount.emailAddress, "dev@example.com", "unrelated keys survive");
+  assert.deepEqual(config.projects["/work/other"], { hasTrustDialogAccepted: true, lastCost: 1.5 });
+  // Without this flag Claude Code drops the repo's permissions.allow rules
+  // and every repo command turns into an approval card in the planner's chat.
+  assert.equal(config.projects[root]?.hasTrustDialogAccepted, true);
+  rmSync(home, { recursive: true, force: true });
+});
+
+test("trust survives a missing config and never rewrites a corrupt one", () => {
+  const fresh = workdir("hub-trust-fresh-");
+  trustWorkspace(join(fresh, "drafthouse", "repo"), fresh);
+  assert.equal(
+    JSON.parse(readFileSync(join(fresh, ".claude.json"), "utf8")).projects[
+      join(fresh, "drafthouse", "repo")
+    ].hasTrustDialogAccepted,
+    true,
+  );
+
+  const broken = workdir("hub-trust-broken-");
+  writeFileSync(join(broken, ".claude.json"), "{ not json");
+  trustWorkspace(join(broken, "drafthouse", "repo"), broken);
+  assert.equal(readFileSync(join(broken, ".claude.json"), "utf8"), "{ not json");
+  rmSync(fresh, { recursive: true, force: true });
+  rmSync(broken, { recursive: true, force: true });
+});
