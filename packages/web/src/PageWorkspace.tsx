@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ConfluenceReview, DocSummary, DrafthouseScreen, SessionSummary, Workspace } from "@drafthouse/protocol";
+import { markTurn } from "@drafthouse/protocol";
 import type { Daemon } from "./daemon-client";
 import { useSessions, type Sessions } from "./useSessions";
 import { ChatColumn } from "./ChatColumn";
@@ -130,6 +131,13 @@ export function PageWorkspace({
     setPageId(docPath ? (docs.find((page) => page.path === docPath)?.pageId ?? null) : null);
   }, [docPath, docs]);
 
+  // A brief names one 기획서, so it cannot outlive the page it was made on.
+  // Keyed on the path alone: `docs` re-lists on every tree refresh and would
+  // otherwise throw the chip away while the planner was still typing under it.
+  useEffect(() => {
+    setBrief(null);
+  }, [docPath]);
+
   /**
    * 게시 opens the review dialog first: a push writes to Confluence, so the
    * planner sees WHAT would go up before consenting. The dialog itself never
@@ -243,25 +251,38 @@ export function PageWorkspace({
           text,
         ].join("\n")
       : text;
-    await activeSessions.submit(quoted, attachments);
+    /**
+     * The 기획서 a handoff opened on rides as a chip, not as text in the box
+     * (PLAN D9): the mirror path is how Claude finds the file and is not a
+     * thing a planner should have to read, let alone edit around. It is
+     * attached here, at the one place that already composes the wire text.
+     */
+    const composed = brief
+      ? markTurn({ kind: "brief", title: brief.title }, `@confluence/${brief.path} ${quoted}`)
+      : quoted;
+    setBrief(null);
+    await activeSessions.submit(composed, attachments);
   };
 
   /**
    * 이 문서로 화면 만들기: the page becomes the brief of a NEW 화면 thread on
    * the same page, and the right column flips to the screen. Nothing is sent —
    * the planner reads the brief and presses send themselves.
+   *
+   * What they read is a sentence and a chip naming the 기획서; `submit` turns
+   * that back into the `@confluence/…` reference Claude needs.
    */
   const [draft, setDraft] = useState<{ text: string; nonce: number } | null>(null);
+  const [brief, setBrief] = useState<{ title: string; path: string } | null>(null);
   const handoff = () => {
     if (!docPath) return;
-    setDraft({
-      text: `@confluence/${docPath} 기획서로 화면을 만들어 주세요.`,
-      nonce: Date.now(),
-    });
+    const title = docs.find((page) => page.path === docPath)?.title ?? docPath;
+    setBrief({ title, path: docPath });
+    setDraft({ text: "이 기획서로 화면을 만들어 주세요.", nonce: Date.now() });
     // The brief is this app's sentence, not the planner's, so the thread is
     // named here. Letting the first turn name it puts a mirror path in the
     // tab strip - the one place the planner navigates by reading.
-    void createTab("design", docs.find((page) => page.path === docPath)?.title);
+    void createTab("design", title);
   };
 
   /**
@@ -303,17 +324,21 @@ export function PageWorkspace({
     const listed = mine
       .map((screen) => `- ${screen.title} (${screen.route}) — 상태: ${screen.states.join(", ")}`)
       .join("\n");
+    const title = docs.find((page) => page.path === docPath)?.title ?? docPath;
     void forwardComments(
-      [
-        `@confluence/${docPath} 기획서와 아래 화면을 비교해 주세요.`,
-        "",
-        listed || "- (이 기획서로 만든 화면이 아직 없습니다)",
-        "",
-        "기획서의 '화면 목록'과 '상태'에 적힌 것 중 화면에 빠진 것이 있으면 항목으로 적어 주세요.",
-        "빠진 것이 없으면 없다고만 답해 주세요. 지금은 고치지 말고 확인만 해 주세요.",
-      ].join("\n"),
+      markTurn(
+        { kind: "precheck", title, screens: mine.map((screen) => screen.title) },
+        [
+          `@confluence/${docPath} 기획서와 아래 화면을 비교해 주세요.`,
+          "",
+          listed || "- (이 기획서로 만든 화면이 아직 없습니다)",
+          "",
+          "기획서의 '화면 목록'과 '상태'에 적힌 것 중 화면에 빠진 것이 있으면 항목으로 적어 주세요.",
+          "빠진 것이 없으면 없다고만 답해 주세요. 지금은 고치지 말고 확인만 해 주세요.",
+        ].join("\n"),
+      ),
     );
-  }, [docPath, screens, forwardComments]);
+  }, [docPath, docs, screens, forwardComments]);
 
   return (
     <>
@@ -363,6 +388,8 @@ export function PageWorkspace({
           disabled={!docPath || (active?.workspace === "planning" && docDirty)}
           quote={quote}
           onDismissQuote={() => setQuote(null)}
+          brief={brief}
+          onDismissBrief={() => setBrief(null)}
           draft={draft}
           onDraftConsumed={() => setDraft(null)}
           emptyHint={

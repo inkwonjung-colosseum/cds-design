@@ -1,0 +1,163 @@
+/**
+ * Machine-authored turns, marked so the transcript can render them as cards
+ * (PLAN D9).
+ *
+ * Some turns in a planner's chat are not typed by the planner: a bundle of
+ * comment pins, the brief that opens a 화면 thread, a 기획서 comparison, a
+ * failed gate handed back to Claude. Their text is written for Claude — CSS
+ * paths, mirror paths, command output — and a planner reading their own chat
+ * should not meet any of it.
+ *
+ * The turn carries a marker on its first line:
+ *
+ *     <!-- drafthouse:comments {"screen":"member/MemberList",…} -->
+ *     화면 수정 요청 2건 — …
+ *
+ * An HTML comment, because it has to survive three trips without a sidecar to
+ * keep in sync: Claude reads the turn as prose and ignores it, the SDK stores
+ * the text verbatim, and a resumed transcript replays the same string — so the
+ * same card comes back on reload, with nothing to migrate.
+ *
+ * The marker carries what the CARD shows and the body carries what CLAUDE
+ * reads. They overlap on purpose: a card that re-parsed the body would break
+ * silently the day someone reworded the body, and the body is Claude's input,
+ * not a data structure.
+ */
+
+export type TurnMarkerKind = "comments" | "brief" | "precheck" | "gate";
+
+const KINDS: readonly TurnMarkerKind[] = ["comments", "brief", "precheck", "gate"];
+
+/** One pinned element, as the card lists it. */
+export interface CommentMarkerItem {
+  /** What the planner clicked, in words: the element's own text or its name. */
+  label: string;
+  comment: string;
+}
+
+export interface CommentsMarker {
+  kind: "comments";
+  screen: string;
+  state: string;
+  items: CommentMarkerItem[];
+}
+
+export interface BriefMarker {
+  kind: "brief";
+  /** The 기획서 title, as the tree shows it. */
+  title: string;
+}
+
+export interface PrecheckMarker {
+  kind: "precheck";
+  title: string;
+  /** Screen titles the check was asked about; empty means none exist yet. */
+  screens: string[];
+}
+
+export interface GateMarker {
+  kind: "gate";
+  /** The step that failed, in the planner's own words ("저장 전 검사"). */
+  step: string;
+}
+
+export type TurnMarker = CommentsMarker | BriefMarker | PrecheckMarker | GateMarker;
+
+export interface MarkedTurn {
+  /** Null when this is an ordinary typed message. */
+  marker: TurnMarker | null;
+  /** The turn without its marker line — what a card's 자세히 fold shows. */
+  body: string;
+}
+
+/**
+ * Anchored at the start, non-greedy to the first `-->`: a marker is the first
+ * line or it is not a marker. A turn whose BODY happens to contain the string
+ * must not be reinterpreted from the middle.
+ */
+const MARKER = /^<!--\s*drafthouse:([a-z]+)\s+(\{[^\n]*\})\s*-->\n?/;
+
+function isKind(value: string): value is TurnMarkerKind {
+  return (KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * Prefix `body` with its marker. The body is unchanged — whatever Claude was
+ * going to read, it still reads.
+ */
+export function markTurn(marker: TurnMarker, body: string): string {
+  const { kind, ...data } = marker;
+  return `<!-- drafthouse:${kind} ${JSON.stringify(data)} -->\n${body}`;
+}
+
+function str(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+/**
+ * Rebuild the marker from its JSON, field by field. A marker written by an
+ * older build (or hand-edited) must degrade to a card with blanks rather than
+ * throw inside a transcript render — but a marker whose SHAPE is wrong is not
+ * a marker, and the raw turn is the honest fallback for that.
+ */
+function hydrate(kind: TurnMarkerKind, data: Record<string, unknown>): TurnMarker | null {
+  switch (kind) {
+    case "comments": {
+      if (!Array.isArray(data.items)) return null;
+      return {
+        kind,
+        screen: str(data.screen),
+        state: str(data.state),
+        items: data.items.flatMap((entry): CommentMarkerItem[] =>
+          entry && typeof entry === "object"
+            ? [
+                {
+                  label: str((entry as Record<string, unknown>).label),
+                  comment: str((entry as Record<string, unknown>).comment),
+                },
+              ]
+            : [],
+        ),
+      };
+    }
+    case "brief":
+      return { kind, title: str(data.title) };
+    case "precheck":
+      return {
+        kind,
+        title: str(data.title),
+        screens: Array.isArray(data.screens) ? data.screens.map((entry) => str(entry)) : [],
+      };
+    case "gate":
+      return { kind, step: str(data.step) };
+  }
+}
+
+/**
+ * Split a stored turn into its marker and its body.
+ *
+ * Anything that is not a marker we can read — no marker, an unknown kind,
+ * broken JSON, the wrong shape — comes back as the original text with no
+ * marker. Showing the raw turn is worse than a card; inventing a card out of
+ * something we could not parse is worse than both.
+ */
+export function readTurn(text: string): MarkedTurn {
+  const match = MARKER.exec(text);
+  const kind = match?.[1];
+  const json = match?.[2];
+  if (!match || !kind || !json || !isKind(kind)) return { marker: null, body: text };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return { marker: null, body: text };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { marker: null, body: text };
+  }
+
+  const marker = hydrate(kind, parsed as Record<string, unknown>);
+  if (!marker) return { marker: null, body: text };
+  return { marker, body: text.slice(match[0].length) };
+}

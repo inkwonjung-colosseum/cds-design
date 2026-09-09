@@ -21,6 +21,8 @@ export function ChatColumn({
   disabled,
   quote,
   onDismissQuote,
+  brief,
+  onDismissBrief,
   draft,
   onDraftConsumed,
   emptyHint,
@@ -35,6 +37,12 @@ export function ChatColumn({
   /** A passage dragged out of the planning editor, shown as a chip. */
   quote?: DocQuote | null;
   onDismissQuote?: () => void;
+  /**
+   * The 기획서 a 화면 thread was opened on, shown as a chip. The mirror path
+   * it carries is attached to the turn on send, never typed (PLAN D9).
+   */
+  brief?: { title: string; path: string } | null;
+  onDismissBrief?: () => void;
   /** Prefilled first turn from the 기획→디자인 handoff; never sent for them. */
   draft?: { text: string; nonce: number } | null;
   onDraftConsumed?: () => void;
@@ -114,6 +122,8 @@ export function ChatColumn({
         sendKey={sendKey}
         quote={quote}
         onDismissQuote={onDismissQuote}
+        brief={brief}
+        onDismissBrief={onDismissBrief}
         initialText={draft}
         onInitialTextConsumed={onDraftConsumed}
         onSend={(text, attachments) => {

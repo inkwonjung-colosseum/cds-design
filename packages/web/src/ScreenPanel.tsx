@@ -5,8 +5,11 @@ import type {
   HandoffStatus,
   RepoPhase,
   SessionState,
+  TurnMarker,
 } from "@drafthouse/protocol";
+import { markTurn } from "@drafthouse/protocol";
 import type { Daemon } from "./daemon-client";
+import { stateLabel } from "./format";
 import { Preview, type PreviewTarget } from "./Preview";
 import { DiffPanel } from "./DiffPanel";
 import { HANDOFF_STATE_LABEL, HandoffPanel } from "./HandoffPanel";
@@ -339,7 +342,11 @@ export function ScreenPanel({
   const forwardComments = async (envelope: DrafthouseCommentsEnvelope) => {
     setCommentPins(envelope);
     setCommentTurnRan(false);
-    await onComments(commentsToTurn(envelope));
+    // The envelope names the screen the way the app routes to it; the card
+    // wants the title the repo gave it. Falling back to the raw id keeps a
+    // screen the registry no longer declares from losing its card entirely.
+    const named = screens.find((screen) => screen.route === `/${envelope.screen}`);
+    await onComments(commentsToTurn(envelope, named?.title ?? envelope.screen));
   };
 
   const errorKind = classifyError(repo?.detail ?? null);
@@ -473,8 +480,26 @@ function CommentPinsSummary({ envelope }: { envelope: DrafthouseCommentsEnvelope
   );
 }
 
-/** The structured turn: readable Korean first, machine shape in a json fence. */
-function commentsToTurn(envelope: DrafthouseCommentsEnvelope): string {
+/**
+ * The structured turn: readable Korean first, machine shape in a json fence,
+ * and a marker so the planner's own chat shows what they asked for rather than
+ * the CSS paths Claude needs (PLAN D9).
+ *
+ * `screenTitle` is what the repo called the screen; the envelope only carries
+ * its route-shaped id, and a card is the wrong place to meet one.
+ */
+function commentsToTurn(envelope: DrafthouseCommentsEnvelope, screenTitle: string): string {
+  const marker: TurnMarker = {
+    kind: "comments",
+    screen: screenTitle,
+    state: stateLabel(envelope.state),
+    items: envelope.items.map((item) => ({
+      // The element's own text is what the planner clicked and recognises;
+      // its component name is the fallback nobody should normally read.
+      label: item.element.text || item.element.component,
+      comment: item.comment,
+    })),
+  };
   const lines = [
     `화면 수정 요청 ${envelope.items.length}건 — ${envelope.screen} (${envelope.state} 상태)`,
     "미리보기에서 핀으로 찍은 요소들입니다. 화면을 고친 뒤 다시 보여 주세요.",
@@ -490,5 +515,5 @@ function commentsToTurn(envelope: DrafthouseCommentsEnvelope): string {
     );
   });
   lines.push("```json", JSON.stringify(envelope, null, 2), "```");
-  return lines.join("\n");
+  return markTurn(marker, lines.join("\n"));
 }

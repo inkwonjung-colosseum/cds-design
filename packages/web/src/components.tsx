@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { AskQuestion } from "@drafthouse/protocol";
+import type { AskQuestion, TurnMarker } from "@drafthouse/protocol";
+import { readTurn } from "@drafthouse/protocol";
 import type { Block, PendingPermission, PendingQuestion } from "./daemon-client";
 import { Markdown } from "./Markdown";
 import { CheckIcon, CloseIcon, ShieldIcon, SparkIcon, ChevronRightIcon } from "./icons";
@@ -98,11 +99,14 @@ function activityLine(tools: Array<Extract<Block, { type: "tool" }>>): string {
     else if (bucket === "read") read += 1;
     else other += 1;
   }
+  // A planner is watching someone work on their screen, not a process table.
+  // "파일 3개 생성" is true of a Write call and says nothing about what was
+  // gained; the words below describe the work (PLAN D9).
   const parts: string[] = [];
-  if (file) parts.push(`파일 ${file}개 생성`);
-  if (command) parts.push(`명령 ${command}개 실행`);
-  if (read) parts.push(`조회 ${read}개`);
-  if (other) parts.push(`기타 ${other}개`);
+  if (file) parts.push(`화면 파일 ${file}개 작업`);
+  if (command) parts.push(`검사 ${command}회 실행`);
+  if (read) parts.push(`${read}곳 확인`);
+  if (other) parts.push(`그 밖에 ${other}가지`);
   return parts.join(" · ");
 }
 
@@ -189,6 +193,84 @@ function groupActivity(blocks: Block[]): Row[] {
   return rows;
 }
 
+/**
+ * A turn this app wrote on the planner's behalf, rendered as what it means
+ * instead of as what Claude reads (PLAN D9).
+ *
+ * The four kinds share one shape — a heading, a short list, and the original
+ * text one fold away — because they interrupt the chat for the same reason:
+ * something happened that the planner started but did not type. The fold is
+ * not decoration; a turn Claude answered oddly is only diagnosable against the
+ * text it actually received.
+ */
+function MachineTurn({ marker, body }: { marker: TurnMarker; body: string }) {
+  const [open, setOpen] = useState(false);
+
+  let title: string;
+  let lead: string | null = null;
+  let rows: Array<{ key: string; label: string; text: string }> = [];
+
+  switch (marker.kind) {
+    case "comments":
+      title = `수정 요청 ${marker.items.length}건`;
+      lead = [marker.screen, marker.state && `${marker.state} 상태`].filter(Boolean).join(" · ");
+      rows = marker.items.map((item, index) => ({
+        key: String(index),
+        label: item.label || `${index + 1}번째`,
+        text: item.comment,
+      }));
+      break;
+    case "brief":
+      title = "이 기획서로 화면 만들기";
+      lead = marker.title;
+      break;
+    case "precheck":
+      title = "기획서와 대조하기";
+      lead = marker.title;
+      rows =
+        marker.screens.length > 0
+          ? marker.screens.map((screen, index) => ({
+              key: String(index),
+              label: screen,
+              text: "",
+            }))
+          : [{ key: "none", label: "아직 이 기획서로 만든 화면이 없습니다", text: "" }];
+      break;
+    case "gate":
+      title = `${marker.step}에서 멈췄습니다`;
+      lead = "무엇이 잘못됐는지 Claude에게 넘겼습니다. 고치는 동안 기다려 주세요.";
+      break;
+  }
+
+  return (
+    <div className={`machine machine--${marker.kind}`}>
+      <div className="machine__head">
+        <span className="machine__title">{title}</span>
+        {lead && <span className="machine__lead">{lead}</span>}
+      </div>
+      {rows.length > 0 && (
+        <ul className="machine__rows">
+          {rows.map((row) => (
+            <li key={row.key}>
+              <span className="machine__label">{row.label}</span>
+              {row.text && <span className="machine__text">{row.text}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <button
+        type="button"
+        className="machine__more"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "접기" : "자세히"}
+      </button>
+      {open && <pre className="machine__body">{body}</pre>}
+    </div>
+  );
+}
+
 export function Transcript({ blocks, live = true }: { blocks: Block[]; live?: boolean }) {
   if (blocks.length === 0) {
     return <p className="empty">메시지를 보내면 대화가 여기에 이어집니다.</p>;
@@ -209,7 +291,12 @@ export function Transcript({ blocks, live = true }: { blocks: Block[]; live?: bo
         if (row.kind === "activity") return <ActivitySummary key={row.id} steps={row.steps} />;
         const block = row.block;
         switch (block.type) {
-          case "user":
+          case "user": {
+            // Only the planner's own side carries markers: this app writes
+            // them, Claude does not. Reading them off assistant text would let
+            // a quoted marker in an answer render as a second card.
+            const { marker, body } = readTurn(block.text);
+            if (marker) return <MachineTurn key={block.id} marker={marker} body={body} />;
             return (
               <div key={block.id} className="bubble bubble--user">
                 {block.text}
@@ -221,6 +308,7 @@ export function Transcript({ blocks, live = true }: { blocks: Block[]; live?: bo
                 ))}
               </div>
             );
+          }
           case "text":
             return (
               <div key={block.id} className="bubble bubble--assistant">

@@ -7,8 +7,9 @@
 # ... null to sign ad-hoc" (문서의 Identity 절).
 # target: dmg(설치 배포) + zip(자가 업데이트가 내려받는 형태).
 #
-# win — NSIS 설치 파일(DESIGN §7). 이 머신에서 빌드·실행하지 않는다:
-# 설정만 완전(Windows 미검증 — receipt 에 기록).
+# win — NSIS 설치 파일(DESIGN §7). 이 머신에서는 빌드하지 않고 CI 의
+# windows-latest 잡이 만든다 — 첫 실행에서 통과했다(PLAN M5.5). 설치 파일을
+# 실제로 실행해 본 적은 아직 없다.
 #
 # extraResources — 포터블 런타임(DESIGN §7 런타임 번들). resources/bin 을
 # PATH 앞에 붙이는 것은 메인 프로세스가 DRAFTHOUSE_EXTRA_PATH 로 넘긴다.
