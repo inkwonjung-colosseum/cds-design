@@ -83,20 +83,27 @@ jobs:
       # Windows 는 MinGit 도 번들한다(연결 레포 작업에 git 필요). 버전과
       # sha256 은 git-for-windows v2.55.0.windows.5 릴리스 에셋에 고정한다.
       #
-      # 상대 경로로 받는 이유: $RUNNER_TEMP 는 `D:\a\_temp` 이고, GNU tar 는
-      # 콜론이 든 인자를 `host:path` 원격 지정으로 읽어 "Cannot connect to D:"
-      # 로 죽는다(exit 128). curl 과 sha256sum 은 같은 경로로 멀쩡히 돌기
-      # 때문에 다운로드·검증까지 통과한 뒤 압축 해제에서만 터진다.
+      # pwsh 인 이유는 두 가지가 첫 CI 실행에서 연달아 터졌기 때문이다. 이 스텝은
+      # bash 로 쓰여 있었지만 mac 의 bsdtar 를 전제하고 있었다:
+      #   1. `$RUNNER_TEMP` 는 `D:\a\_temp` 다. GNU tar 는 콜론이 든 인자를
+      #      `host:path` 원격 지정으로 읽어 "Cannot connect to D:" 로 죽는다.
+      #   2. 경로에서 콜론을 없애도 Git-bash 의 GNU tar 는 **zip 을 못 읽는다**
+      #      ("This does not look like a tar archive"). mac 의 bsdtar 만 읽는다.
+      # curl·sha256sum 은 둘 다 멀쩡히 통과하므로 실패는 늘 압축 해제에서만
+      # 났다. PowerShell 은 Windows 경로도 zip 도 그냥 다룬다.
       - name: MinGit 내려받기 (Windows)
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          mkdir -p packages/desktop/resources/bin
-          curl -sSfL -o mingit.zip \
-            https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip
-          echo "56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e  mingit.zip" | sha256sum -c -
-          tar -xf mingit.zip -C packages/desktop/resources/bin
-          rm -f mingit.zip
+          $dest = "packages/desktop/resources/bin"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP "mingit.zip"
+          Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip" -OutFile $zip
+          $want = "56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e"
+          $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLower()
+          if ($got -ne $want) { throw "MinGit sha256 불일치 — 기대 $want, 실제 $got" }
+          Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force
+          Remove-Item -LiteralPath $zip
 
       - name: 런타임 번들 (Windows, MinGit 포함)
         if: runner.os == 'Windows'
