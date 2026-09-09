@@ -82,15 +82,21 @@ jobs:
 
       # Windows 는 MinGit 도 번들한다(연결 레포 작업에 git 필요). 버전과
       # sha256 은 git-for-windows v2.55.0.windows.5 릴리스 에셋에 고정한다.
+      #
+      # 상대 경로로 받는 이유: $RUNNER_TEMP 는 `D:\a\_temp` 이고, GNU tar 는
+      # 콜론이 든 인자를 `host:path` 원격 지정으로 읽어 "Cannot connect to D:"
+      # 로 죽는다(exit 128). curl 과 sha256sum 은 같은 경로로 멀쩡히 돌기
+      # 때문에 다운로드·검증까지 통과한 뒤 압축 해제에서만 터진다.
       - name: MinGit 내려받기 (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           mkdir -p packages/desktop/resources/bin
-          curl -sSfL -o "$RUNNER_TEMP/mingit.zip" \
+          curl -sSfL -o mingit.zip \
             https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip
-          echo "56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e  $RUNNER_TEMP/mingit.zip" | sha256sum -c -
-          tar -xf "$RUNNER_TEMP/mingit.zip" -C packages/desktop/resources/bin
+          echo "56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e  mingit.zip" | sha256sum -c -
+          tar -xf mingit.zip -C packages/desktop/resources/bin
+          rm -f mingit.zip
 
       - name: 런타임 번들 (Windows, MinGit 포함)
         if: runner.os == 'Windows'
