@@ -1,5 +1,0 @@
-node_modules/
-dist/
-.agent-hub-mock.json
-*.log
-.DS_Store

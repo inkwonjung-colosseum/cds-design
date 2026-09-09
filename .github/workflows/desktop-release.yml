@@ -1,0 +1,198 @@
+# Drafthouse 데스크톱 릴리스(DESIGN §7) — 태그 푸시(v*) 하나로 mac·win
+# 설치 파일을 모두 빌드해 이 레포의 릴리스 페이지에 올린다.
+#
+# 흐름: build(macOS arm64 + Windows x64 행렬, --publish never 로 로컬 빌드)
+#   → publish(두 행렬의 산출물을 모아 릴리스 1개에 원자적으로 첨부).
+# 두 빌드가 같은 태그의 릴리스에 동시에 올라가 경쟁하는 구조(electron-builder
+# --publish always 행렬)를 쓰지 않는다 — 릴리스 페이지가 완성 상태로 한 번에
+# 나타나는 것이 이 워크플로우의 목표다.
+#
+# 에셋(이름은 electron-builder.yml 의 artifactName 에 고정):
+#   Drafthouse-<v>-mac-arm64.dmg        macOS 설치 파일
+#   Drafthouse-<v>-mac-arm64.zip        mac 자가 업데이트가 내려받는 형태
+#   Drafthouse-Setup-<v>-win-x64.exe    Windows NSIS 설치 파일
+#   latest.json                         앱의 업데이트 확인 피드(version/notes/
+#                                       sha256/url — mac zip sha256 검증용)
+#
+# 수동 실행(workflow_dispatch)은 빌드만 하고 릴리스는 만들지 않는다 — 파이프
+# 라인 점검용: 실행 페이지의 artifacts 에서 설치 파일을 내려받아 확인한다.
+#
+# 서명·공증 없음(사내 배포). mac 은 ad-hoc 서명(identity: "-"), Windows 는
+# NSIS — Gatekeeper·SmartScreen 우회 안내는 릴리스 노트가 담당한다.
+name: desktop-release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 빌드 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-latest 러너는 Apple Silicon(arm64) 이미지다 — electron-builder
+        # 가 arm64 바이너리를 그대로 뽑는다. Intel mac 빌드는 설정에 없다.
+        include:
+          - os: macos-latest
+          - os: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm 버전은 루트 package.json 의 packageManager 필드가 결정한다.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 태그·버전 일치 검사
+        if: startsWith(github.ref, 'refs/tags/') && runner.os == 'macOS'
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./packages/desktop/package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::태그 ${GITHUB_REF_NAME} 와 packages/desktop/package.json 버전(${PKG_VERSION})이 다릅니다 — 앱 버전(=설치 파일 이름, 업데이트 비교 기준)이 어긋납니다."
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+
+      # 프로토콜 → 데몬·웹 → 데스크톱 순서로(워크스페이스 의존성이 정렬한다).
+      - run: pnpm -r build
+
+      # 데몬이 서빙할 웹 산출물을 packages/desktop/web-dist 로 스테이징.
+      - run: node packages/desktop/scripts/stage-web-dist.mjs
+
+      # 포터블 런타임 번들 — macOS: node + corepack 만.
+      - name: 런타임 번들 (macOS)
+        if: runner.os == 'macOS'
+        run: node packages/desktop/scripts/bundle-runtimes.mjs
+
+      # Windows 는 MinGit 도 번들한다(연결 레포 작업에 git 필요). 버전과
+      # sha256 은 git-for-windows v2.55.0.windows.5 릴리스 에셋에 고정한다.
+      - name: MinGit 내려받기 (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p packages/desktop/resources/bin
+          curl -sSfL -o "$RUNNER_TEMP/mingit.zip" \
+            https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip
+          echo "56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e  $RUNNER_TEMP/mingit.zip" | sha256sum -c -
+          tar -xf "$RUNNER_TEMP/mingit.zip" -C packages/desktop/resources/bin
+
+      - name: 런타임 번들 (Windows, MinGit 포함)
+        if: runner.os == 'Windows'
+        run: node packages/desktop/scripts/bundle-runtimes.mjs --with-mingit
+
+      # 대상(target)·아키텍처는 electron-builder.yml 이 정한다: mac dmg+zip
+      # (arm64), win nsis(x64). 릴리스 업로드는 publish 잡이 단독으로 한다.
+      - name: 설치 파일 빌드
+        run: pnpm --filter @drafthouse/desktop exec electron-builder --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ runner.os }}
+          path: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.zip
+            packages/desktop/release/*.exe
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    name: 릴리스 페이지에 게시
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 태그 주석(릴리스 노트 원문)을 읽기 위해
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      - name: latest.json + 릴리스 노트 준비
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          BASE_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          DMG="Drafthouse-${VERSION}-mac-arm64.dmg"
+          ZIP="Drafthouse-${VERSION}-mac-arm64.zip"
+          EXE="Drafthouse-Setup-${VERSION}-win-x64.exe"
+
+          # 산출물이 전부 있는지 — 없으면 릴리스를 반쪽으로 만들지 않는다.
+          for f in "$DMG" "$ZIP" "$EXE"; do
+            [ -f "dist/$f" ] || { echo "::error::빌드 산출물이 없습니다: $f"; exit 1; }
+          done
+
+          # 앱 업데이트 확인 피드: mac zip sha256 은 자가 교체가 검증에 쓴다.
+          SHA=$(sha256sum "dist/$ZIP" | cut -d' ' -f1)
+          NOTES=$(git tag -l --format='%(contents:body)' "$TAG")
+          jq -n --arg version "$VERSION" --arg notes "$NOTES" --arg sha256 "$SHA" \
+            --arg url "${BASE_URL}/${ZIP}" \
+            '{version: $version, notes: $notes, sha256: $sha256, url: $url}' > dist/latest.json
+
+          # 릴리스 페이지 본문(설치 안내 페이지를 겸한다 — 미서명 안내 포함).
+          {
+            echo "## 다운로드"
+            echo
+            echo "| 플랫폼 | 파일 |"
+            echo "| --- | --- |"
+            echo "| macOS (Apple Silicon) | \`$DMG\` |"
+            echo "| Windows (x64) | \`$EXE\` |"
+            echo
+            echo "mac 자가 업데이트는 \`$ZIP\`(sha256 \`$SHA\`)을 내려받는다."
+            echo
+            echo "### 미서명 배포 안내"
+            echo
+            echo "- **macOS**: 처음 실행할 때 Gatekeeper 가 막으면 설치한 앱을 우클릭 → **열기** 한 번 실행한다(또는 시스템 설정 → 개인정보 보호 및 보안)."
+            echo "- **Windows**: SmartScreen 이 \"Windows PC를 보호했습니다\" 를 띄우면 **추가 정보** → **실행** 으로 진행한다."
+            echo
+            echo "---"
+            echo
+            if [ -n "$NOTES" ]; then printf '%s\n' "$NOTES"; else echo "${VERSION} 릴리스"; fi
+          } > release-notes.md
+
+          # 릴리스 생성(있으면 에셋만 교체 — 같은 태그 재실행 대비).
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" -R "$GITHUB_REPOSITORY" dist/* --clobber
+          else
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" \
+              --title "Drafthouse ${VERSION}" --notes-file release-notes.md dist/*
+          fi
+
+          # 게시 확인: 네 에셋이 아니면 실패 — "릴리스 페이지에 win·mac 모두
+          # 있다"가 이 워크플로우의 완료 조건이다.
+          ASSETS=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name]')
+          echo "에셋: $ASSETS"
+          for f in "$DMG" "$ZIP" "$EXE" latest.json; do
+            echo "$ASSETS" | jq -e --arg f "$f" 'index($f) != null' > /dev/null \
+              || { echo "::error::릴리스에 에셋이 없습니다: $f"; exit 1; }
+          done
+          {
+            echo "## 릴리스 완료: Drafthouse ${VERSION}"
+            echo
+            gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url --jq '.url'
+          } >> "$GITHUB_STEP_SUMMARY"

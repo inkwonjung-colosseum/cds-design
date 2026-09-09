@@ -5,9 +5,11 @@
  * text, a real permission round-trip, a follow-up turn that proves context
  * carried over, session listing, and teardown.
  *
- * The daemon owns its one workspace, so this points `AGENT_HUB_REPO_DIR` at a
- * throwaway directory rather than registering one over the wire. Nothing is
- * cloned there: sessions only need the directory to exist.
+ * The daemon's one workspace is a throwaway directory (`DRAFTHOUSE_REPO_DIR`)
+ * rather than something registered over the wire, and the project registry the
+ * daemon migrates it into is thrown away with it. Without that the spawned
+ * daemon would write ~/drafthouse/config/projects.json on the developer's own
+ * machine. Nothing is cloned there: sessions only need the directory to exist.
  *
  * Usage: node test/e2e.mjs            (starts its own daemon)
  *        node test/e2e.mjs <ws-url>   (uses an already running daemon)
@@ -22,7 +24,7 @@ import { freePort } from "./fixture-repo.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const daemonEntry = join(here, "..", "dist", "index.js");
-const WORK = join(tmpdir(), "agent-hub-e2e");
+const WORK = join(tmpdir(), "drafthouse-e2e");
 const TARGET = join(WORK, "greeting.txt");
 
 const results = [];
@@ -57,9 +59,11 @@ async function main() {
   if (!url) {
     const env = {
       ...process.env,
-      AGENT_HUB_REPO_DIR: WORK,
+      DRAFTHOUSE_REPO_DIR: WORK,
+      DRAFTHOUSE_PROJECTS_SETTINGS: join(WORK, "projects.json"),
+      DRAFTHOUSE_PROJECTS_DIR: join(WORK, "projects"),
       // The user's own daemon may be running right now; never fight it for 7823.
-      AGENT_HUB_PORT: String(await freePort()),
+      DRAFTHOUSE_PORT: String(await freePort()),
     };
     delete env.ANTHROPIC_API_KEY;
     daemon = spawn(process.execPath, [daemonEntry], { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -104,7 +108,7 @@ async function main() {
 
   // 1. hello + status
   const hello = await waitFor((m) => m.type === "hello", 10000, "hello", inbox);
-  check("hello carries daemon status", hello.status.protocolVersion === 3);
+  check("hello carries daemon status", hello.status.protocolVersion === 5);
   check(
     "signed in with a subscription, not an API key",
     hello.status.loggedIn === true &&
@@ -118,8 +122,8 @@ async function main() {
   const blocking = hello.status.warnings.filter((w) => !w.includes("@colosseumcoinckr/cds"));
   check("no warnings that would stop a session", blocking.length === 0, blocking.join("; "));
 
-  // 2. session creation — the daemon picks the workspace, the client does not
-  const created = await call({ type: "session.create" });
+  // 2. session creation — the client names the workspace, the daemon owns the cwd
+  const created = await call({ type: "session.create", workspace: "design" });
   const sessionId = created.sessionId;
   check("session.create returns an id up front", /^[0-9a-f-]{36}$/.test(sessionId), sessionId);
 
@@ -241,11 +245,18 @@ async function main() {
     JSON.stringify((secondTurn.event.resultText ?? "").slice(0, 60)),
   );
 
-  // 6. listing merges live and on-disk sessions
-  const listed = await call({ type: "session.list" });
+  // 6. listing merges live and on-disk sessions, per workspace
+  const listed = await call({ type: "session.list", workspace: "design" });
   const mine = listed.find((s) => s.sessionId === sessionId);
   check("session.list includes the live session", Boolean(mine?.live), `state=${mine?.state}`);
-  check("session title derived from the first prompt", Boolean(mine?.title && mine.title !== "새 기획"));
+  check("session title derived from the first prompt", Boolean(mine?.title && mine.title !== "새 화면"));
+  check("the summary names its workspace", mine?.workspace === "design", mine?.workspace);
+  const planning = await call({ type: "session.list", workspace: "planning" });
+  check(
+    "the planning workspace does not see the design thread",
+    !planning.some((s) => s.sessionId === sessionId),
+    `${planning.length} planning session(s)`,
+  );
 
   // 7. teardown
   await call({ type: "session.close", sessionId });

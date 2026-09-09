@@ -1,6 +1,12 @@
 import { deleteSession, getSessionInfo, getSessionMessages, listSessions } from "@anthropic-ai/claude-agent-sdk";
-import type { ChatEvent, SessionSummary } from "@agent-hub/protocol";
-import { Session, type SessionEvents, type SessionOptions } from "./session.js";
+import type { ChatEvent, SessionState, SessionSummary, Workspace } from "@drafthouse/protocol";
+import {
+  NEW_DESIGN_TITLE,
+  NEW_PLANNING_TITLE,
+  Session,
+  type SessionEvents,
+  type SessionOptions,
+} from "./session.js";
 import { replayHistory } from "./translate.js";
 
 export class SessionManager {
@@ -19,7 +25,9 @@ export class SessionManager {
       void getSessionInfo(options.resume, { dir: options.cwd })
         .then((info) => {
           const inherited = info?.customTitle || info?.summary;
-          if (inherited && session.title === "새 기획") session.title = inherited;
+          const untouched =
+            session.title === NEW_PLANNING_TITLE || session.title === NEW_DESIGN_TITLE;
+          if (inherited && untouched) session.title = inherited;
         })
         .catch(() => undefined);
     }
@@ -29,6 +37,16 @@ export class SessionManager {
 
   get(sessionId: string): Session | undefined {
     return this.live.get(sessionId);
+  }
+
+  /**
+   * Every session this daemon is currently running. A live thread has no
+   * transcript on disk until its first turn lands, so anything reconciling
+   * against stored sessions has to count these too or it will forget a thread
+   * that was created seconds ago.
+   */
+  all(): Iterable<Session> {
+    return this.live.values();
   }
 
   require(sessionId: string): Session {
@@ -83,6 +101,20 @@ export class SessionManager {
     return this.live.size;
   }
 
+  /**
+   * How many live sessions of one workspace sit in a given state. The editor
+   * lock reads this: a design turn must not freeze the 기획 editor, because
+   * it never touches the mirror.
+   */
+  countState(state: SessionState, workspace?: Workspace): number {
+    let count = 0;
+    for (const session of this.live.values()) {
+      if (workspace && session.workspace !== workspace) continue;
+      if (session.state === state) count += 1;
+    }
+    return count;
+  }
+
   get pendingCount(): number {
     let total = 0;
     for (const session of this.live.values()) total += session.pendingCount;
@@ -92,34 +124,45 @@ export class SessionManager {
   /**
    * Merge sessions this daemon is running with transcripts already on disk, so
    * conversations started in the terminal show up in the UI and can be resumed.
+   * The SDK stores transcripts per directory, so one workspace's `cwd` is
+   * exactly its session list — the two halves never see each other's threads.
+   *
+   * Every row leaves here with `pageId: null`. Which 기획서 a thread is about
+   * is the project's business, not the transcript store's, and the server
+   * stamps it from that project's sidecar on the way out.
    */
-  async list(cwd: string, limit = 50): Promise<SessionSummary[]> {
+  async list(cwd: string, workspace: Workspace, limit = 50): Promise<SessionSummary[]> {
     const onDisk = await listSessions({ dir: cwd, limit }).catch(() => []);
     const summaries = new Map<string, SessionSummary>();
+    const untitled = "제목 없는 기획";
 
     for (const info of onDisk) {
       summaries.set(info.sessionId, {
         sessionId: info.sessionId,
-        title: info.customTitle || info.summary || "제목 없는 기획",
+        title: info.customTitle || info.summary || untitled,
         lastModified: info.lastModified,
         live: false,
         state: "closed",
+        workspace,
+        pageId: null,
       });
     }
 
     for (const session of this.live.values()) {
-      if (session.cwd !== cwd) continue;
+      if (session.workspace !== workspace) continue;
       const stored = summaries.get(session.id);
       // Prefer the transcript's own summary. Claude Code keeps it current as the
       // conversation moves, so using it for live and stored sessions alike stops
       // a session from being labelled one way while open and another once closed.
-      const title = stored && stored.title !== "제목 없는 기획" ? stored.title : session.title;
+      const title = stored && stored.title !== untitled ? stored.title : session.title;
       summaries.set(session.id, {
         sessionId: session.id,
         title,
         lastModified: session.lastActivity,
         live: true,
         state: session.state,
+        workspace,
+        pageId: null,
       });
     }
 

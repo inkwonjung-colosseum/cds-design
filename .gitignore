@@ -14,3 +14,11 @@ packages/web/test/ui-composer-e2e.png
 packages/web/test/ui-settings-dark.png
 packages/web/test/ui-settings-light.png
 packages/web/test/ui-planner-e2e.png
+packages/web/test/ui-editor-e2e.png
+packages/web/test/ui-publish-e2e.png
+packages/web/test/ui-comments-e2e.png
+packages/web/test/ui-onboarding-done.png
+packages/desktop/release/
+packages/desktop/web-dist/
+packages/desktop/resources/bin/
+.test-logs/

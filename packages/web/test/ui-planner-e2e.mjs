@@ -26,7 +26,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
 const daemonEntry = join(repoRoot, "packages", "daemon", "dist", "index.js");
 const webDist = join(repoRoot, "packages", "web", "dist");
-const DIR = join(tmpdir(), "agent-hub-planner-e2e");
+const DIR = join(tmpdir(), "drafthouse-planner-e2e");
 const WORK_ROOT = join(DIR, "work");
 const SPEC = join(DIR, "2026-09-08-회원관리.md");
 const PORT = 5396;
@@ -76,8 +76,8 @@ function generatedScreens(root) {
 }
 
 async function main() {
-  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @agent-hub/web build");
-  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @agent-hub/daemon build");
+  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @drafthouse/web build");
+  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @drafthouse/daemon build");
 
   rmSync(DIR, { recursive: true, force: true });
   mkdirSync(DIR, { recursive: true });
@@ -87,10 +87,28 @@ async function main() {
 
   const env = {
     ...process.env,
-    AGENT_HUB_PORT: String(DAEMON_PORT),
-    AGENT_HUB_REPO_DIR: WORK_ROOT,
-    AGENT_HUB_REPO_URL: fixture.remote,
-    AGENT_HUB_REPO_SETTINGS: join(DIR, "settings.json"),
+    DRAFTHOUSE_PORT: String(DAEMON_PORT),
+    DRAFTHOUSE_REPO_DIR: WORK_ROOT,
+    DRAFTHOUSE_REPO_URL: fixture.remote,
+    DRAFTHOUSE_REPO_SETTINGS: join(DIR, "settings.json"),
+    // Same isolation as every other suite: the registry belongs to this run.
+    DRAFTHOUSE_PROJECTS_SETTINGS: join(DIR, "projects.json"),
+    DRAFTHOUSE_PROJECTS_DIR: join(DIR, "projects"),
+    // Onboarding-gate seeds: Confluence is env-configured against fixtures,
+    // so all four §8 steps pass (repo stays a non-blocking warn until cloned).
+    DRAFTHOUSE_CONFLUENCE_SITE: "https://example.atlassian.net",
+    DRAFTHOUSE_CONFLUENCE_EMAIL: "dev@example.com",
+    DRAFTHOUSE_CONFLUENCE_TOKEN: "planner-e2e-token",
+    DRAFTHOUSE_CONFLUENCE_FIXTURE: join(
+      repoRoot,
+      "packages",
+      "daemon",
+      "test",
+      "fixtures",
+      "confluence",
+      "golden",
+    ),
+    DRAFTHOUSE_CREDENTIAL_STORE: "memory",
   };
   delete env.ANTHROPIC_API_KEY;
   const daemon = spawn(process.execPath, [daemonEntry], { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -121,8 +139,9 @@ async function main() {
   await page.getByRole("button", { name: "연결" }).click();
 
   // --- 1. connecting lands straight in the planner -------------------------
-  await page.waitForSelector(".planner", { timeout: 20000 });
+  await page.waitForSelector(".planner__body", { timeout: 60000 });
   check("connecting opens the planner, with no mode to choose", true);
+  await page.getByRole("tab", { name: "디자인" }).click();
 
   // --- 2. the connected repo bootstraps itself ----------------------------
   const progress = page.locator(".progress__head h2");
@@ -145,11 +164,12 @@ async function main() {
   );
 
   // --- 3. attaching a planning document -----------------------------------
-  await page.setInputFiles(".composer input[type=file]", SPEC);
-  await page.waitForSelector(".chip", { timeout: 5000 });
-  check("a markdown document attaches as a document chip", true, await page.locator(".chip").innerText());
+  const VISIBLE = ".planner__body:not([hidden]) ";
+  await page.setInputFiles(`${VISIBLE}.composer input[type=file]`, SPEC);
+  await page.waitForSelector(`${VISIBLE}.chip`, { timeout: 5000 });
+  check("a markdown document attaches as a document chip", true, await page.locator(`${VISIBLE}.chip`).innerText());
 
-  const area = page.locator(".composer textarea");
+  const area = page.locator(`${VISIBLE}.composer textarea`);
   await area.pressSequentially(
     "이 기획서로 화면 만들어줘. 되물을 것이 있으면 한 번에 물어보고, 없으면 바로 만들어.",
   );
@@ -224,7 +244,7 @@ async function main() {
   );
   // The ring only appears once a settled turn has reported usage, which is
   // exactly where step 7 left the session.
-  check("the composer shows how long the conversation has grown", await page.locator(".ring").isVisible());
+  check("the composer shows how long the conversation has grown", await page.locator(`${VISIBLE}.ring`).isVisible());
 
   // Duplicate assistant text was a real regression: the streamed deltas and
   // the aggregated message have to describe the same block.

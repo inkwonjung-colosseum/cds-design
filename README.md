@@ -1,326 +1,373 @@
-# Agent Hub
+# Drafthouse
 
-Turns a planning document into working screens built from the company design
-system, in a chat a planner can use, for internal use.
+A planner writes a 기획서, chats with Claude Code to turn it into screens, and
+validates the plan against the real rendered app — without ever opening git,
+Confluence, or a terminal.
 
-A planner attaches their document, answers the questions Claude asks about what
-the document leaves open, and watches the screens appear in a pane next to the
-conversation. What comes out is not a picture: it is React files that import
-`@colosseumcoinckr/cds` the same way the real app does, plus a `HANDOFF.md`, so
-a developer moves a feature by copying its folder and replacing one mock data
-file.
+The tool knows one thing: keep a local folder in sync with a remote, and run a
+Claude Code session inside it. Everything domain-shaped — the stack, the design
+system, the screen rules, the checks, the preview command — is decided by the
+**connected repo** through its `drafthouse.json` and `CLAUDE.md`. What the
+planner sees in the preview is that repo's own app, framed as-is.
 
-This started as a developer-facing chat with a workspace picker, model and
-effort pickers, and raw tool blocks. That half is gone. There is one audience
-now, and one workspace: everything a planner does not need was removed rather
-than hidden behind a tab, because a control nobody should touch is still a
-control someone will.
+One person, one machine, one subscription: each user runs their own daemon that
+drives the Claude Code CLI they signed in to. No credentials pass through a
+shared server; secrets live in the OS credential store and never reach the
+renderer.
 
-Each person runs a small daemon on their own machine. The daemon drives the
-Claude Code CLI that person already signed in to, and streams the session to a
-browser. Nobody's credentials pass through a shared server, and nobody's usage
-is paid for on someone else's behalf.
+## The name
 
-Phase 1 (this repo today) is local only: the daemon listens on `127.0.0.1` and
-the browser connects straight to it. Phase 2 adds the relay that lets you reach
-your own daemon from another device behind single sign-on. `PLAN.md` holds the
-full plan.
+A **draft** is what this tool moves through its whole pipeline: a 기획서 draft
+becomes a screen draft, the planner looks at the rendered thing and marks it up,
+and the draft goes around again. The **house** is where that happens — one
+folder, one daemon, one place where the drafts live until they are good enough
+to publish. Nothing here is a finished build; everything is a screening of a cut
+that is still being edited.
 
-## How it works
+The codename during the first build was `agent-hub`. Outside this paragraph it
+survives nowhere — no package, env var, path, or string. If you find one, it is
+a bug.
+
+## What shipped
+
+- **One workspace, on the page axis.** The Confluence tree picks a 기획서 and
+  everything else is that page's: the threads in the tab strip, the document in
+  the editor, the screen in the preview. Underneath, two halves survive because
+  they must — 기획 runs a Claude session *in the Confluence mirror* (it writes
+  and revises pages, and 기획서 게시 pushes the space back), 화면 runs one *in
+  the connected repo clone* with the mirror mounted read-only (and 화면 게시
+  runs the repo's gates and pushes git). A thread belongs to a page and to one
+  of those halves; the strip shows both, labelled, so a planner can flip
+  between writing the spec and building the screen without leaving it.
+  이 문서로 화면 만들기 in the editor opens a 화면 thread on the same page with
+  the brief prefilled — never auto-sent.
+- **Connected-repo contract.** The daemon clones the repo the planner points it
+  at (`git clone` with PAT auth), pulls at session start, runs the repo's own
+  `install`, and starts the repo's own `preview.command` on the declared port.
+  The tool never parses what renders inside the frame.
+- **저장 · 개발자에게 넘기기 · 반영됨.** Three words replace every git noun, and
+  the planner never reads 브랜치, 커밋, 푸시, PR or 머지. **저장** creates this
+  cycle's own `drafthouse/<YYYYMMDD>-<n>` branch on its first use, runs the
+  repo's `check`, and commits and pushes exactly the reviewed diff there — the
+  base branch is never written to, because a developer receives this work as a
+  pull request they can read, run and refuse. **개발자에게 넘기기** runs `build`
+  and opens that pull request, its body linking each 기획서 in Confluence
+  beside the `pageId` the tree badges ✓ 넘김 from; later saves
+  accumulate on the same one. **반영됨** is the merge: the clone returns to the
+  base branch and the next 저장 starts a new cycle. `build` gates only the
+  handoff — a save that paid for a full build every time would teach the
+  planner to save rarely. A failing gate hands its output to Claude as the next
+  task, in Korean, and nothing reaches the developer.
+- **Projects.** A project is one Confluence subtree set plus one connected
+  repo, and it is what every other word is scoped to — the mirror that gets
+  cloned, the clone Claude edits, the preview server that runs, and (because
+  the SDK stores transcripts per directory) the session list. A machine
+  carries as many as the planner works on; exactly one is active, because two
+  repos may declare the same `preview.port`. One page may never live in two
+  projects: creating a project whose root sits inside another's subtree is
+  refused by name, which is what keeps the mirror's optimistic lock from
+  splitting in two.
+- **Confluence mirror.** A project's subtrees clone to
+  `~/drafthouse/projects/<slug>/confluence/<space>/` as hybrid Markdown: YAML frontmatter
+  (`pageId version space title parentPageId`) plus a body where anything
+  Markdown cannot hold — macros, merged cells, layouts — survives verbatim in
+  ` ```confluence ` fences. Round-trips are lossless both ways. Pushes use
+  `version.number + 1` optimistic locking; a page that moved on both sides
+  becomes a three-way choice (내 것으로 덮기 / 원격 받기 / 직접 보기), and the
+  local edit is never overwritten silently. A page a 기획 session wrote but
+  nobody has pushed carries a local `pageId: new-…` and shows in the tree as
+  신규; 게시 creates it remotely and rewrites the file with the real id. The
+  count on the 게시 button is exactly what would go up.
+  스페이스 트리의 **+ 스페이스** picks any space the credentials can see and
+  clones it — the mirror holds one folder per space, so taking a second one
+  (or re-taking a clone that died halfway) is a normal action, not a
+  first-run-only step. A clone writes its sync state as it walks, so an
+  interruption leaves a smaller mirror rather than nothing.
+- **Personal spaces.** A personal Confluence space is keyed `~<accountId>`, and
+  a path component starting with `~` reads as a home reference to the Claude
+  CLI — it would treat the session's own mirror as foreign and ask permission
+  for every file in it. Those spaces mirror under `_<accountId>` instead. The
+  space key is unchanged everywhere else: frontmatter, the API, the tree's
+  Confluence links. A doc path's first segment is the folder, so it is the
+  spelling `@confluence/…` mentions use.
+- **The editor.** TipTap WYSIWYG with an 원문 (raw markdown) toggle; every
+  editor save goes through the daemon's single normalization path, so both
+  editor forms land in the mirror in one canonical shape. Claude's own writes
+  go through the same path: the mirror watcher normalizes a changed page file
+  before broadcasting it, and leaves already-canonical content untouched, so
+  the editor, the 수정됨 marker and the push body never disagree about a page.
+  Preserved blocks render as atomic grey cards — movable, deletable, never
+  editable inside. While a 기획 turn runs, the editor goes read-only with a
+  Korean reason (a 디자인 turn does not lock it — it never touches the mirror);
+  a background pull defers to unsaved editor work. Selecting text offers 인용,
+  which lands in the composer as a quote of page + heading + text.
+- **Comment pins.** The connected repo carries a dev-only overlay: comment
+  mode, hover highlight, numbered pins with inline input. 수정 요청 N건 sends
+  ONE envelope to the tool (element identity = React component name,
+  `data-screen`/`data-state`, CSS path, own text, rect), which forwards it as a
+  structured Korean turn. Pins stay while the turn runs, clear when it
+  settles. v1 is click, comment, send — screenshots and arrows are out.
+- **The screen axis.** The connected repo declares what it can render — route,
+  title, `states`, and the mirror-relative path of the 기획서 it was built from
+  — and its overlay posts that list to the tool. Picking a 기획서 in the tree
+  navigates the preview to its screen; a state chip renders `empty` or `error`
+  on real mock data; a 폭 toggle narrows the frame without telling the app.
+  Every page in the tree carries how far it has come: `○` 기획 중, `◐` 화면
+  있음, `✓` 넘김, `●` 반영됨 — each decided from something mechanical, a screen
+  the repo declared or a pull request GitHub reports, never from an opinion
+  about whether the work is good. Whether a screen actually covers its 기획서 is
+  the one judgement the tool refuses to make: 넘기기 전 점검 asks the 화면
+  thread and leaves the answer in the chat, because how a 기획서 is written is
+  the repo's decision and reading one is not the tool's job.
+- **Onboarding.** Four gates before the workspace opens. Three are machine-wide
+  and answered once — Claude Code, git, the Confluence site; the fourth is the
+  project: a name, the Confluence page its 기획서 live under, and the repo its
+  screens go into. Each failure says why in Korean and offers a fix button or the
+  inputs it needs. Credentials (repo PAT, Confluence API token) go to the OS
+  credential store — Keychain via Electron `safeStorage` in the desktop app,
+  `security` CLI otherwise — and cross the wire as presence only.
+- **Desktop.** An Electron app whose main process hosts the daemon in-process:
+  ephemeral port, per-run token, web UI served by the daemon itself, no pairing
+  screen. Portable node + corepack ship as extra resources and prepend to PATH
+  for repo commands, so the planner's machine needs neither. Manual update
+  check only; mac ships ad-hoc signed (no identities, no notarization).
+
+## How it fits together
 
 ```mermaid
 flowchart LR
-    spec["기획서<br/>md · pdf · 이미지"] --> chat["채팅"]
-    chat --> daemon["daemon"]
-    daemon -->|"specs/에 저장<br/>@specs/… 로 참조"| claude["Claude Code<br/>cwd = 목 워크스페이스"]
-    claude -->|"질문"| chat
-    claude -->|"src/screens/**.screen.tsx"| vite["Vite dev 서버"]
-    vite -->|"iframe"| preview["미리보기 패널"]
-    claude -->|"HANDOFF.md"| dev["개발자"]
+    subgraph app["Drafthouse (Electron · 브라우저 개발 경로 동일)"]
+        tree["Confluence 트리<br/>기획서 하나 선택"]
+        plan["기획 대화<br/>cwd = 미러"]
+        design["화면 대화<br/>cwd = 레포 클론"]
+        seg["문서 | 화면<br/>편집기 · 미리보기"]
+        daemon["daemon<br/>프로젝트 · 세션 · 미러 · 자격 증명"]
+    end
+    repo["연결 레포<br/>drafthouse.json + CLAUDE.md"]
+    conf["Confluence Cloud"]
+    tree --> plan
+    tree --> design
+    tree --> seg
+    plan <-->|"기획서 게시 = 페이지 push<br/>버전 잠금 · 3지 충돌"| conf
+    plan -->|"이 문서로 화면 만들기<br/>@confluence/…"| design
+    daemon -->|"clone · pull<br/>화면 게시 = check·build → commit·push"| repo
+    repo -->|"preview.command"| seg
+    seg -->|"코멘트 핀"| design
 ```
 
-1. **One mock workspace per machine**, at `~/agent-hub-mocks` (override with
-   `AGENT_HUB_MOCK_ROOT`). The daemon creates it from `templates/cds-mock`,
-   installs the design system, starts the preview dev server on port 5274
-   (`AGENT_HUB_PREVIEW_PORT`), and re-syncs the template's infrastructure on
-   every start while leaving `src/screens/` and `specs/` alone.
-2. **The document is a file, not a paste.** Attachments are saved under
-   `specs/` and mentioned to Claude as `@specs/<name>`, so its Read tool handles
-   PDF page ranges and image downscaling, the document stays available to later
-   sessions, and `HANDOFF.md` can cite it. `.md .txt .pdf .png .jpg .jpeg
-   .webp` are accepted; export a `.docx` to PDF first.
-3. **The workspace configures the agent.** `CLAUDE.md`, the `cds` and
-   `screen-mock` skills, and `.claude/settings.json` all live in the template,
-   so the rules a screen must follow are versioned with the code that checks
-   them. Planner sessions run in `acceptEdits`.
-4. **`pnpm check` is the gate.** `scripts/check-screens.mjs` rejects an import
-   from another feature, a missing `meta`, a hard-coded colour, an invented
-   design token, and data left inline instead of in the sibling mock file. It
-   names the fix, because the agent is the one reading the failure.
-5. **The preview follows the work.** The daemon watches `src/screens`, so a
-   screen appears in the picker as soon as it is written, and Vite's hot reload
-   shows an edit without a click.
+- The wire between daemon and UI is `packages/protocol` (v5): zod-validated
+  client messages, plain-typed server messages, sessions streamed as folded
+  events. `session.create`/`session.list`/`repo.files` name a `workspace`; the
+  daemon owns what that means — cwd, write policy, extra read roots, and (for
+  기획) the instructions appended to Claude Code's own system prompt. Those two
+  messages also carry a `pageId`, and the daemon keeps a per-project
+  `sessions.json` mapping thread → 기획서: the SDK stores transcripts per
+  directory and knows nothing else about them. A page's local `new-…` id
+  becoming its real Confluence id on 게시 re-points that map in the same step
+  that rewrites the file, so a page's first publish does not scatter its own
+  threads. The browser dev path (separate vite server, pasted ws url) still
+  works — the desktop just removes it.
+- Session permissions are pinned to `default` with edit-class tools answered
+  in-process by the workspace's write policy: 기획 writes mirror pages silently
+  and is refused `.confluence-sync.json`; 화면 writes the clone silently and
+  gets a card for anything else, including the mirror it reads through
+  `<repo>/confluence` (a local-only symlink, excluded via `.git/info/exclude`).
 
-## What a screen looks like
-
-```
-src/screens/member/MemberList.screen.tsx   # the screen — CDS components only
-src/screens/member/MemberList.mock.ts      # the data — a developer's swap point
-src/screens/member/HANDOFF.md              # screens, components, open questions
-```
-
-A screen may import `react`, `@colosseumcoinckr/*`, and files beside it —
-nothing else, so the folder moves on its own. It renders the content area only:
-the preview supplies a stand-in admin shell through `meta.frame`, because the
-real app already has navigation of its own. `meta.states` lists the variants it
-can render, and the preview offers one per state, which is how an empty or
-error screen gets reviewed at all.
-
-## Requirements
-
-Windows and macOS are both supported. Linux works too, on the same code path
-as macOS.
-
-- Node 22 or newer, and pnpm 11
-- Claude Code CLI installed and signed in (`claude /login`)
-- git, for `@` file mentions to respect `.gitignore`. On Windows, Git for
-  Windows also gives Claude Code its Bash tool.
-- No `ANTHROPIC_API_KEY` in the daemon's environment. If one is set, sessions
-  bill that key instead of the subscription, and the daemon says so on startup.
-- A GitHub PAT with `read:packages`, stored in the **user-level** npmrc, or the
-  mock workspace cannot install the design system:
-  `pnpm config set //npm.pkg.github.com/:_authToken <PAT>`. A token written into
-  a repository `.npmrc` does not work — pnpm 11 does not expand `${ENV_VAR}`
-  there. `pnpm doctor` reports whether this machine can reach the registry.
-
-The daemon finds the CLI wherever each platform's installer puts it: the native
-installer's `~/.local/bin` on all three, plus Homebrew on macOS and WinGet on
-Windows. Set `AGENT_HUB_CLAUDE_BIN` to override.
-
-The daemon marks the mock workspace as trusted in `~/.claude.json` the first
-time it prepares it. Claude Code silently drops every `permissions.allow` entry
-from a project it has not been trusted, and the trust dialog is interactive, so
-without this a planner would answer an approval card for each `pnpm check`. It
-is the daemon's own generated directory, so nothing is being accepted on the
-user's behalf that they did not ask for.
-
-## Run it
-
-The commands are the same on both platforms.
+## Quickstart
 
 ```bash
 pnpm install
 pnpm build
 
-# terminal 1
-pnpm dev:daemon      # prints a client url containing the pairing token
+# terminal 1 — prints a client url containing the pairing token
+pnpm dev:daemon
 
 # terminal 2
-pnpm dev:web         # http://127.0.0.1:5273
+pnpm dev:web      # http://127.0.0.1:5273
 ```
 
-Paste the client URL into the connect screen once. It is kept in local storage.
-Connecting then prepares the mock workspace, which installs the design system
-and takes a minute or two; the chat says so while it happens.
+Paste the client URL once. First connect runs the onboarding wizard; fill in
+the 연결 레포 url (+PAT for a private repo) and Confluence site/email/token
+there. `pnpm doctor` reports the same checks from a terminal.
 
-Check the machine is set up correctly at any time:
+Requirements: Node 22 + pnpm 11, Claude Code CLI signed in (`claude /login`),
+git, no `ANTHROPIC_API_KEY` in the daemon environment. If the connected repo
+declares a private `registry`, the machine needs `read:packages` auth for it
+(the onboarding repo step says so in Korean when it does not).
+
+Everything the tool writes lives under one folder, `~/drafthouse/`:
+
+| Path | What it holds |
+| --- | --- |
+| `~/drafthouse/config/` | `daemon.json` (host/port/token), `projects.json` (the registry), `confluence.json` — all mode 0600, no secrets (those go to the OS store) |
+| `~/drafthouse/projects/<slug>/repo/` | That project's clone of its connected repo |
+| `~/drafthouse/projects/<slug>/confluence/<space>/` | That project's mirror, one folder per space it owns a subtree of (a personal space's `~<accountId>` folds to `_<accountId>`) |
+
+A pre-projects installation migrates itself on first start: `~/drafthouse/repo`
+and `~/drafthouse/confluence` move under `projects/default/`, and the old
+`config/repo.json` url becomes that project's. Nothing is re-downloaded.
+
+Useful environment overrides (all optional, all test-driven):
+
+| Variable | Default | What it changes |
+| --- | --- | --- |
+| `DRAFTHOUSE_PROJECTS_SETTINGS` | `~/drafthouse/config/projects.json` | The project registry file |
+| `DRAFTHOUSE_PROJECTS_DIR` | `~/drafthouse/projects` | Where project folders live |
+| `DRAFTHOUSE_REPO_DIR` | `<project>/repo` | The **active** project's clone directory |
+| `DRAFTHOUSE_REPO_URL` | registry | The **active** project's repo url (tests use fixture remotes) |
+| `DRAFTHOUSE_CONFLUENCE_DIR` | `<project>/confluence` | The **active** project's mirror root |
+| `DRAFTHOUSE_CLAUDE_BIN` | auto-detect | Which Claude Code binary to drive |
+| `DRAFTHOUSE_GITHUB_FIXTURE` | unset | Recorded GitHub REST pairs (offline handoff tests) |
+| `DRAFTHOUSE_GITHUB_SLUG` | from the repo url | `owner/repo` a handoff targets; tests clone local bare remotes, which name no GitHub project |
+| `DRAFTHOUSE_CREDENTIAL_STORE` | platform default | `memory` (tests) or `keychain` |
+| `DRAFTHOUSE_EXTRA_PATH` | unset | PATH prefix for repo commands (desktop sets it) |
+
+## Authoring a connected repo
+
+The contract is one file. Everything else is the repo's own decision.
+
+```json
+{
+  "install": "pnpm install",
+  "check":   "pnpm check",
+  "build":   "pnpm build",
+  "preview": { "command": "pnpm dev", "port": 5274 },
+  "registry": { "host": "npm.pkg.github.com", "scope": "@colosseumcoinckr" },
+  "planning": { "rules": "화면 기획서는 '개요 · 화면 목록 · …' 순서로 쓴다." }
+}
+```
+
+`install` runs when the manifest/lockfile hash moves. `check`/`build` gate
+publishing; a repo without them just commits and pushes. `preview.port` must
+accept connections before the tool calls it ready. `registry` is optional and
+only matters for private packages.
+
+The repo decides both halves of what Claude is told. `CLAUDE.md` is the 디자인
+workspace's rules — stack, conventions, where screens live — loaded from the
+clone the way a terminal would load it. `planning.rules` is the 기획
+workspace's: how this team writes a 기획서, its sections, its vocabulary. The
+tool appends that below its own mirror-format invariants (frontmatter fields
+that must not move, ` ```confluence ` fences that must not be edited, how a
+new page is spelled) — and where the two disagree, the invariants win.
+`connected-repo/` in this monorepo is the reference implementation
+(Next.js + `@colosseumcoinckr/cds`).
+
+To point the tool at your own repo: push it to GitHub, then enter the url (and
+PAT) in the onboarding wizard or 설정. The daemon clones, installs, and runs
+your preview command — the same code path the fixture remotes exercise in
+tests.
+
+## Desktop packaging
 
 ```bash
-pnpm doctor
+# dev run of the packaged code path
+pnpm --filter @drafthouse/desktop dev
+
+# bundle portable runtimes, then an unpacked app
+node packages/desktop/scripts/bundle-runtimes.mjs
+pnpm --filter @drafthouse/desktop pack        # release/mac-arm64/Drafthouse.app
+
+# installers: dmg + zip (mac, ad-hoc signed), nsis (win)
+pnpm --filter @drafthouse/desktop dist
 ```
 
-It reports the platform, the resolved CLI path and version, whether git and
-pnpm are present, whether this machine can read the design system from GitHub
-Packages, the sign-in method and plan, and whether an API key is shadowing the
-subscription.
+The desktop app is mac-exercised today: ad-hoc signing (`identity: "-"`,
+no certificate), `codesign -v` clean, and the packaged binary passes the same
+smoke as dev. The Windows target (NSIS, MinGit bundling) is config-complete
+and built by CI on every release. Mac self-update (download zip → sha256 →
+swap `/Applications/Drafthouse.app`) is implemented behind an
+`app.isPackaged` guard; the check flow is proven against a local feed
+fixture.
 
-### Platform notes
+## Releases
 
-Only two things differ, and neither is a command you type.
+One tag push builds both platforms and publishes the release page:
 
-| | macOS and Linux | Windows |
-| --- | --- | --- |
-| CLI locations searched | `~/.local/bin`, Homebrew, `/usr/local`, `/usr/bin` | `~\.local\bin`, WinGet links, `%LOCALAPPDATA%\Programs` |
-| Command lookup | `which` | `where` |
+```bash
+# 1. packages/desktop/package.json "version" 이 릴리스 버전이다 — 먼저 올린다.
+# 2. 태그는 버전과 같아야 한다(워크플로우가 검사한다). 주석(annotated tag)
+#    본문이 릴리스 노트가 된다.
+git tag -a v0.1.0 -m "첫 릴리스: 기획서 → 화면 파이프라인"
+git push origin v0.1.0
+# 3. .github/workflows/desktop-release.yml → mac(macOS dmg+zip)·win(NSIS exe)
+#    빌드 → 릴리스 페이지에 4개 에셋 첨부(dmg, zip, exe, latest.json)
+```
 
-Everything else is shared. Nothing in the daemon shells out to a POSIX-only
-utility: file listing uses git when the workspace is a repository and a Node
-directory walk when it is not.
+- 수동 실행(`workflow_dispatch`)은 빌드만 돌린다 — 릴리스는 만들지 않고,
+  실행 페이지의 artifacts 에서 설치 파일을 검수한다.
+- 에셋 이름은 `electron-builder.yml` 의 `artifactName` 에 고정돼 있고,
+  `latest.json`(`version`/`notes`/`sha256`/`url`)은 앱의 업데이트 확인이
+  읽는 피드다(mac zip sha256 = 자가 교체 검증값).
+- **repo 를 GitHub 에 만든 뒤** `packages/protocol/src/update.ts` 의
+  `RELEASES_REPO = "OWNER/REPO"` 를 실제 주소로 바꿔야 앱의 업데이트 확인이
+  동작한다(무인증 fetch 라 private repo 릴리스는 읽히지 않는다 — 설치 파일을
+  공개 상태로 두려면 공개 릴리스 채널이 필요하다).
+- 미서명 배포: macOS 는 첫 실행을 우클릭 → 열기, Windows 는 SmartScreen
+  추가 정보 → 실행. 이 안내는 워크플로우가 릴리스 노트에 자동으로 넣는다.
 
 ## Tests
 
-`test:unit` and `test:settings` are free and instant. `test:mock` is free of
-Claude usage but runs a real `pnpm install`. The five browser suites drive real
-Claude Code sessions, so they cost real subscription usage and take several
-minutes; `test:planner` is the longest, because it makes Claude build screens.
-
-`test:unit` deliberately checks the Windows branch from macOS and the POSIX
-branch from Windows, because nobody runs the suite on both machines before
-every commit. It cannot check path separators, since `path.join` follows the
-host; it checks which locations are searched, in what order, and with what
-suffix.
+Everything runs offline against local fixtures (bare git remotes, recorded
+Confluence REST pairs, stub CLI) except the two suites marked real-Claude,
+which spend subscription usage.
 
 ```bash
-pnpm test:unit      # 24 checks: platform branches, spec naming, meta parsing, template sync, block ids
-pnpm test:settings  # 15 checks: theme, stored preferences, bad stored values
-pnpm test:mock      # 19 checks: bootstrap, install, dev server, watcher, restart after death
-pnpm test:daemon    # 15 checks over the wire protocol
-pnpm test:planner   # 24 checks: document in, CDS screens out, rendered in the preview
-pnpm test           # all five
-pnpm test:smoke "<client url>"   # cheap liveness check, no model turn
+pnpm test:unit            # offline — platform branches, security/containment regressions, workspace write policies + 기획 rules, repo workspace units, the editor's markdown grammar
+pnpm test:onboard-unit    # offline — onboarding gates and the OS credential store (migration, keychain, npmrc merge)
+pnpm test:confluence-unit # offline — storage↔markdown lossless round-trips, REST golden pass, engine pull/push/conflict/deferral
+pnpm test:projects        # offline — two projects on two subtrees of one space, overlap refused, activation re-points the tree, registry survives a restart
+pnpm test:repo            # offline — clone/pull/install-skip/preview lifecycle over a local bare remote
+pnpm test:confluence      # offline — mirror clone/pull/push/conflict through the real daemon socket + fixture transport, plus outside-write normalization and 신규 pages in the tree
+pnpm test:publish         # offline — save gates, failing check → session brief, its own drafthouse/* branch with main untouched, build gates only the handoff, PR → merged → new cycle
+pnpm test:publish-ui      # offline — browser: 저장 검토 → 저장 → the branch reaches the remote, the base does not
+pnpm test:editor-ui       # offline — TipTap typing → normalized mirror file, 원문, locks, quote chip, 3-way conflict → resolve mine → 게시 → 기획→디자인 handoff
+pnpm test:settings        # offline — theme/preferences; opens with no daemon at all
+pnpm test:onboarding      # offline — the four gates over the real socket with stubbed PATH/CLI, including the no-project first run
+pnpm test:onboarding-ui   # offline — browser wizard: Confluence credentials → project form (space, root page, repo) → workspace opens
+pnpm test:daemon          # REAL CLAUDE — sessions over the wire: permissions, streaming, context carry-over
+pnpm test:planner         # REAL CLAUDE — the product claim: 기획서 in, screens out, rendered in the preview
+pnpm test:comments-ui     # offline — the whole screen axis in the repo's own dev preview: declared screens → picker, 기획서 selection → that screen, state chip → real mock data, tree badges, then overlay → envelope → session turn → pins clear
+pnpm test:desktop-unit    # offline — update check/semver/sha256, safeStorage store with a fake, PATH prefix
+pnpm test:desktop-smoke   # offline — Electron: window, in-process daemon /health, wizard, update bridge (also runs against the packaged app)
+pnpm test                 # all of the above, run as 4 parallel lanes (see below)
+pnpm test:smoke "<url>"   # liveness check against an already-running daemon; starts nothing
 ```
 
-`test:settings` needs no daemon at all: the settings panel opens from the
-connect screen, because a theme is a browser preference and should not wait on
-a WebSocket. It drives the built app straight off disk.
+`pnpm test` runs everything through `scripts/test-parallel.mjs`: four lanes
+at once — L1 unit suites, L2 offline daemon-socket e2e, L3 the five browser
+suites (each on its own fixed port, sequential inside the lane), L4 the two
+real-Claude suites. Per-lane logs land in `.test-logs/` (gitignored);
+`pnpm test:sequential` runs the identical suite set one at a time if you
+prefer. The browser suites need `pnpm --filter @drafthouse/web build` (or a
+full `pnpm build`) first.
 
-`test:daemon` points `AGENT_HUB_MOCK_ROOT` at a throwaway directory rather than
-registering a workspace, because registering one is no longer something a
-client can do. It asks Claude for a `Bash` call rather than a `Write`: sessions
-run in `acceptEdits`, so a `Write` would be approved silently and the
-permission round-trip would go untested.
-
-`test:planner` and `test:mock` use their own daemon port, mock root, and
-preview port, so they can run while your own daemon is up. `test:planner`
-asserts what the product promises rather than what the code does: the document
-reaches `specs/`, screen files appear, the contract check passes on them, the
-iframe renders CDS markup, no assistant sentence is printed twice, and no
-developer chrome survives anywhere in the DOM.
+The fixture design, one paragraph: Confluence interactions replay recorded
+request/response pairs (`packages/daemon/test/fixtures/confluence/`) through
+the same transport interface production uses, consumed strictly in order —
+which is what makes version-conflict simulation and PUT-body assertions real;
+git remotes are bare repositories seeded with a minimal `drafthouse.json` app;
+the Claude CLI is a stub script wherever no model turn is the subject.
 
 ## Packages
 
 | Package | What it does |
 | --- | --- |
-| `packages/protocol` | Message schema shared by daemon and clients. Client messages are validated with zod because they arrive over a socket. |
-| `packages/daemon` | Owns sessions. Wraps the Agent SDK, brokers permission prompts, merges live sessions with transcripts on disk, prepares and serves the mock workspace, serves WebSocket. |
-| `packages/web` | React chat UI: the chat, the preview pane, the session list, permission and question cards, and the settings panel. |
-| `templates/cds-mock` | The mock workspace the daemon copies: preview app, screen contract checker, `CLAUDE.md`, the `cds` and `screen-mock` skills, and a reference screen. |
-
-## The composer
-
-Attach, send, stop, and one number.
-
-| Control | What it does |
-| --- | --- |
-| 첨부 | `.md`, `.txt`, `.pdf`, and images. Paste and drag-and-drop work too. |
-| 대화 길이 | Share of the context window in use, refreshed when a turn settles. Past 85% it says so: a thread that long starts forgetting its own beginning, and the honest fix is a new 기획. |
-| 보내기 / 중지 | Send the turn, or interrupt one in flight. |
-
-Model, thinking effort, permission mode, and fast mode used to sit here. They
-describe decisions a planner has no basis to make, so they are gone rather than
-disabled — every session runs on the account's own model in `acceptEdits`,
-which is the one mode that fits the job of writing screen files.
-
-Typing `@` offers files from the workspace, ranked so a filename match beats a
-match deep in the path. That is how you point Claude back at a document you
-attached earlier: it is sitting in `specs/`. Arrow keys move, Tab or Enter
-accepts, Escape dismisses.
-
-Every tool call folds into one line — "파일 3개 생성 · 명령 1개 실행" — that
-expands when someone wants to see what happened.
-
-## Settings
-
-The gear in the header opens it; so does the gear on the connect screen, since
-the theme should not need a daemon to change.
-
-| Setting | What it does |
-| --- | --- |
-| 테마 | Dark, light, or follow the system. Dark is the default: a preference nobody set should not repaint the app. |
-| 보내기 키 | `Enter` sends and `Shift+Enter` is a newline, or the other way round. |
-| 삭제 전 확인 | On by default. Off skips the confirm on the session `×`. |
-| 접속 주소 | Change the daemon this browser talks to, or forget it and return to the connect screen. |
-
-Preferences live in this browser's local storage, not on the daemon, so they
-are per-browser and never leave the machine. A stored value the build does not
-recognise falls back to its default rather than breaking the UI.
-
-## How a session works
-
-1. The web app asks the daemon to create a session. It does not say where:
-   the daemon owns the one workspace and resolves the path itself, so a client
-   can never aim a session at an arbitrary folder. The daemon generates a UUID
-   and passes it to the SDK as `sessionId`, so the session has a stable name
-   before the model has said anything.
-2. The daemon holds one `query()` per session for the session's whole life and
-   pushes each user turn into an async queue. Streaming input is what makes
-   interruption, image attachments, and interactive approval possible.
-3. Raw SDK messages are folded into a small event union (`text.delta`,
-   `tool.start`, `tool.end`, `turn.end`, …) before they reach the browser, so
-   the UI never parses SDK internals.
-4. When Claude needs approval, the SDK calls `canUseTool`. The daemon parks that
-   call as a promise and sends a card to the browser. The promise resolves when
-   a human answers. Nothing times out on its own.
-5. Opening a session from the list replays its stored transcript as the same
-   event union, so a past conversation renders exactly like a live one. The
-   replay path is separate from the streaming one: a transcript holds complete
-   blocks, so pushing it through the delta path would duplicate turns.
-
-## Things worth knowing
-
-- **The init event does not arrive until the first user turn.** The CLI emits
-  nothing at startup, which is why the daemon names sessions itself instead of
-  waiting to learn the id.
-- **"Always allow" means different things per tool.** For `Bash` the CLI offers
-  a rule it can write to `.claude/settings.local.json`. For `Write` and `Edit`
-  it offers a switch to `acceptEdits` for the current session only. The button
-  shows which one you are accepting.
-- **Auto-approved calls never reach the permission card.** Allow rules in
-  project settings and the looser permission modes resolve a call before
-  `canUseTool` runs. That is the same behaviour as the terminal.
-- **Sessions are shared with the terminal.** Transcripts live in
-  `~/.claude/projects/`, so a conversation started in a terminal appears in the
-  session list and can be resumed here, and the reverse.
-- **Opening a past 기획 resumes it in place.** The developer UI made you choose
-  between forking and resuming, because a session listed there might still be
-  open in a terminal. Here the workspace is the daemon's own, so resuming is
-  the answer every time and the choice is not worth asking about.
-- **Images attach by paste, drop, or the 첨부 button.** They ride along with the
-  next message as base64 blocks. Streaming input mode is what makes this
-  possible at all.
-- **A session nobody typed into is closed on the way out.** One is opened for
-  you the moment the workspace is ready, so without this the list would fill
-  with empty threads.
-- **Session titles come from the transcript summary,** which Claude Code keeps
-  current as the conversation moves. It is not pinned to the first prompt.
-- **Deleting a 기획 removes the transcript for real.** Hover a row in the
-  session list and press the × that appears; after a confirm, the daemon closes
-  its live query (if any) and deletes the `.jsonl` from `~/.claude/projects/`.
-  A session that never sent a message has no transcript, so closing it is the
-  whole job. Deleted means deleted — the terminal cannot bring it back either.
-- **An untrusted project loses its allow rules, quietly.** Claude Code prints
-  "Ignoring N permissions.allow entries" on stderr and carries on, so the only
-  visible symptom is approval cards where the template promised none. The
-  daemon writes `hasTrustDialogAccepted` for the mock root before the first
-  session; a live run without it blocked 14 Bash calls.
-- **The mock workspace is its own pnpm root.** `pnpm-workspace.yaml` with an
-  empty `packages` list stops a copy that lands inside another monorepo from
-  being installed as part of it.
-- **A screen names its own states.** `meta.states` is what the preview turns
-  into a picker, so an empty or error state is reviewable instead of
-  theoretical — and the contract check rejects a screen that lists a state and
-  then ignores the prop.
-- **The contract check validates design tokens against the installed
-  packages.** `text-text-tertiary` looks right and does not exist; a colour
-  that silently resolves to nothing is the failure mode a screenshot review
-  misses. The check reads the real `--color-*` names out of `node_modules`.
-- **CDS ships its source.** The agent reads
-  `node_modules/@colosseumcoinckr/cds/src/components/<name>.tsx` for props and
-  variants instead of guessing from a catalogue that can drift, and the icon
-  names are typed, so a wrong one fails the typecheck rather than rendering as
-  a word.
+| `packages/protocol` | v5 wire contract (zod-validated client messages), plus the shared manual-update-check logic. |
+| `packages/daemon` | The project registry, sessions, the repo workspace (clone/pull/publish/gates), the Confluence mirror engine with the storage↔markdown converter, onboarding checks, credential storage, static web serving for the desktop. |
+| `packages/web` | The planner UI: project switcher, page tree, session tab strip, chat, the 문서/화면 segment (TipTap editor + repo preview), diff review, conflict chooser, onboarding wizard, settings. |
+| `packages/desktop` | Electron main (daemon in-process, safeStorage store, bundled runtimes, update bridge) + electron-builder config. |
+| `connected-repo/` | The reference connected repo — Next.js + CDS, its own git history, the screen registry and the dev-only preview bridge. Its committed state is what `test:comments-ui` clones, so a change here is not real until it is committed. |
 
 ## Policy
 
 Anthropic's terms allow a product to run Claude Code when the binary is
-unmodified and each end user authenticates with their own credentials. This
-design follows that: the daemon runs the user's own installed CLI, sign-in
-happens through Anthropic's own flow in a terminal, and no token is ever
-collected, stored, or relayed by us.
+unmodified and each end user authenticates with their own credentials. That is
+exactly what ships: the daemon (and the desktop app wrapping it) runs the
+user's own installed CLI, sign-in happens through Anthropic's own flow, and no
+token is ever collected, stored, or relayed by us.
 
-Separately, the Agent SDK documentation says third-party developers should not
-offer claude.ai login in their own applications without prior approval. That
-sentence is aimed at products offered to outside customers, and this is an
-internal tool, but the distinction is worth confirming in writing with our
-Anthropic account contact before rolling it out. See `PLAN.md` for the current
-product plan and its policy notes.
+The Agent SDK documentation asks third-party developers not to offer claude.ai
+login in their own applications without prior approval. That sentence targets
+products offered to outside customers, and this is an internal tool, but the
+distinction should be confirmed in writing with our Anthropic account contact
+before rollout. `PLAN.md` tracks that and everything else still open.

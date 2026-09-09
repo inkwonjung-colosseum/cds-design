@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isAbsolute, join } from "node:path";
 import {
   query,
   type PermissionResult,
@@ -10,13 +11,20 @@ import type {
   AskQuestion,
   ChatEvent,
   ContextUsage,
+  EffortLevel,
   PermissionMode,
   PermissionSuggestion,
+  PlanUsage,
+  PlanWindow,
+  SessionCommand,
+  SessionModelInfo,
+  SessionSelectors,
   SessionState,
-} from "@agent-hub/protocol";
+  Workspace,
+} from "@drafthouse/protocol";
 import { saveSpecFiles, type SpecFile } from "./repo.js";
+import { containsPath, realpathBestEffort } from "./paths.js";
 import { MessageTranslator } from "./translate.js";
-import { resolve, sep } from "node:path";
 
 /** An async iterable the daemon can push user turns into while the query runs. */
 class PushQueue implements AsyncIterable<SDKUserMessage> {
@@ -61,6 +69,41 @@ interface PendingRequest {
 
 type PermissionOutcome = PermissionResult;
 
+// ---------------------------------------------------------------------------
+// 항상 허용 memory (F7)
+// ---------------------------------------------------------------------------
+
+/**
+ * The signature of one approved call: for Bash the command string, for
+ * path-shaped tools the tool + path. Anything else falls back to a stable
+ * JSON of the input. 항상 허용 means this exact call never prompts again in
+ * this session — a different command or path still does.
+ */
+export function permissionSignature(toolName: string, input: Record<string, unknown>): string {
+  if (typeof input.command === "string" && input.command.trim() !== "") {
+    return `${toolName}:command:${input.command}`;
+  }
+  const path = [input.file_path, input.notebook_path, input.path].find(
+    (value) => typeof value === "string" && value.length > 0,
+  ) as string | undefined;
+  if (path) return `${toolName}:path:${path}`;
+  const keys = Object.keys(input).sort();
+  return `${toolName}:json:${keys.map((key) => `${key}=${String(input[key])}`).join("|")}`;
+}
+
+/** What the session remembers about 항상 허용 answers. */
+export class PermissionMemory {
+  private readonly signatures = new Set<string>();
+
+  record(toolName: string, input: Record<string, unknown>): void {
+    this.signatures.add(permissionSignature(toolName, input));
+  }
+
+  allows(toolName: string, input: Record<string, unknown>): boolean {
+    return this.signatures.has(permissionSignature(toolName, input));
+  }
+}
+
 export interface SessionEvents {
   onEvent: (sessionId: string, event: ChatEvent) => void;
   onState: (sessionId: string, state: SessionState, detail?: string) => void;
@@ -78,31 +121,84 @@ export interface SessionEvents {
   }) => void;
 }
 
+/**
+ * What a session may do to a file its edit tools name, decided by whoever
+ * created it:
+ *
+ * - `allow` — write it without asking (the workspace's own working set).
+ * - `ask`   — surface a permission card, as any non-edit tool would.
+ * - `deny`  — refuse outright, with a Korean reason Claude can read. Used for
+ *   files the tool owns and a session must never rewrite (mirror sync state,
+ *   the generated CLAUDE.md).
+ */
+export type WriteDecision = "allow" | "ask" | "deny";
+export type WritePolicy = (absolutePath: string) => WriteDecision;
+
 export interface SessionOptions {
+  /** Which half of the product this session belongs to. */
+  workspace: Workspace;
   cwd: string;
   claudeExecutable: string;
   /** Resume an existing transcript. */
   resume?: string;
+  /**
+   * Workspace instructions layered onto Claude Code's own system prompt.
+   * Used where the rules belong to the session type rather than to a folder
+   * a second workspace can also see.
+   */
+  systemPromptAppend?: string;
+  /** Extra roots the session may read, e.g. the mirror under a design session. */
+  additionalDirectories?: string[];
+  /**
+   * Verdict for every edit-class tool call. Defaults to the historical rule:
+   * silent inside cwd, a card everywhere else.
+   */
+  writePolicy?: WritePolicy;
+  /**
+   * A name for a thread the tool opened on the planner's behalf. The first
+   * turn only names an UNNAMED thread, so a handoff — whose first turn is a
+   * sentence this tool wrote, not the planner's — reads as its 기획서 instead
+   * of as the file path inside that sentence.
+   */
+  title?: string;
+  /** Model the query starts on (SDK alias or id); omitted = CLI default. */
+  model?: string;
+  /** Reasoning effort the query starts on; omitted = CLI default. */
+  effort?: EffortLevel;
 }
 
 /**
  * File-edit tools that `acceptEdits` mode used to silence. Under the pinned
  * `default` mode the CLI asks about them like anything else, so the daemon
- * answers here instead: silent for the planner, but only ever for paths
- * inside the workspace.
+ * answers here instead, through the workspace's own `writePolicy`.
  */
 const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
+/**
+ * The name a session carries until its first turn supplies one. Also the
+ * sentinel for "nobody has named this yet" — a resumed thread inherits its
+ * stored title only while the placeholder is still in place.
+ */
+export const NEW_PLANNING_TITLE = "새 기획";
+export const NEW_DESIGN_TITLE = "새 화면";
 export class Session {
   readonly id: string;
   readonly cwd: string;
+  readonly workspace: Workspace;
   state: SessionState = "idle";
   permissionMode: PermissionMode = "default";
   model: string | null = null;
+  /** Composer chip selections; `null` = the CLI's own default. */
+  private selectedModel: string | null = null;
+  private selectedEffort: EffortLevel | null = null;
   lastActivity = Date.now();
-  title = "새 기획";
+  /** Replaced by the first turn's own words; also the "untouched" sentinel. */
+  title: string;
+
+  private readonly writePolicy: WritePolicy;
 
   private readonly queue = new PushQueue();
+  private readonly alwaysAllowed = new PermissionMemory();
   private readonly translator = new MessageTranslator();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly events: SessionEvents;
@@ -112,7 +208,21 @@ export class Session {
 
   constructor(options: SessionOptions, events: SessionEvents) {
     this.events = events;
-    this.cwd = options.cwd;
+    this.workspace = options.workspace;
+    this.title =
+      options.title?.trim().slice(0, 80) ||
+      (options.workspace === "planning" ? NEW_PLANNING_TITLE : NEW_DESIGN_TITLE);
+    // /tmp vs /private/tmp: the resolved spelling, so workspace containment
+    // and the SDK's own cwd agree with what the filesystem calls the folder.
+    // The CLI reports tool paths already resolved, so an unresolved cwd makes
+    // it read its own workspace as foreign and card every Read in it.
+    this.cwd = realpathBestEffort(options.cwd);
+    // Containment is the floor, not the whole rule: a workspace may refuse
+    // files inside its own cwd (the mirror's sync state).
+    this.writePolicy =
+      options.writePolicy ?? ((path) => (containsPath(this.cwd, path) ? "allow" : "ask"));
+    this.selectedModel = options.model ?? null;
+    this.selectedEffort = options.effort ?? null;
 
     // `sessionId` lets us name the session up front. Without it the id only
     // arrives with the init event, which the CLI does not emit until the first
@@ -122,7 +232,7 @@ export class Session {
     this.run = query({
       prompt: this.queue,
       options: {
-        cwd: options.cwd,
+        cwd: this.cwd,
         pathToClaudeCodeExecutable: options.claudeExecutable,
         // `default` is pinned on purpose: current CLI builds auto-approve
         // safe Bash under acceptEdits/auto without ever consulting
@@ -139,6 +249,24 @@ export class Session {
         // Load the same user/project configuration the terminal would, so
         // CLAUDE.md, skills, and permission rules behave identically.
         settingSources: ["user", "project", "local"],
+        // A fresh query starts on the chips' choices; mid-session switches
+        // go through the control methods below instead.
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.effort ? { effort: options.effort } : {}),
+        // Omitting `systemPrompt` already renders the claude_code preset, so
+        // naming it here only adds the workspace's own rules on top.
+        ...(options.systemPromptAppend
+          ? {
+              systemPrompt: {
+                type: "preset" as const,
+                preset: "claude_code" as const,
+                append: options.systemPromptAppend,
+              },
+            }
+          : {}),
+        ...(options.additionalDirectories && options.additionalDirectories.length > 0
+          ? { additionalDirectories: options.additionalDirectories }
+          : {}),
         ...(options.resume ? { resume: options.resume } : { sessionId: this.id }),
         canUseTool: (toolName, input, opts) => this.canUse(toolName, input, opts),
       },
@@ -183,9 +311,10 @@ export class Session {
   }
 
   /**
-   * The hub's single permission choke point. Edit-class tools inside the
-   * workspace are allowed without surfacing; everything else goes to the
-   * planner as a permission (or question) card.
+   * The hub's single permission choke point. Edit-class tools are answered by
+   * the workspace's `writePolicy`: silent for its own working set, a card for
+   * anything ambiguous, a refusal for the files the tool owns. Everything
+   * else goes to the planner as a permission (or question) card.
    */
   private canUse(
     toolName: string,
@@ -196,17 +325,31 @@ export class Session {
       const paths = [input.file_path, input.notebook_path].filter(
         (value): value is string => typeof value === "string" && value.length > 0,
       );
-      if (paths.length > 0 && paths.every((value) => this.insideWorkspace(value))) {
-        return Promise.resolve({ behavior: "allow", updatedInput: input });
+      if (paths.length > 0) {
+        // Relative names resolve against cwd and symlinks resolve through,
+        // so a policy compares prefixes without being talked past.
+        const decisions = paths.map((value) =>
+          this.writePolicy(
+            realpathBestEffort(isAbsolute(value) ? value : join(this.cwd, value)),
+          ),
+        );
+        const denied = decisions.indexOf("deny");
+        if (denied !== -1) {
+          return Promise.resolve({
+            behavior: "deny",
+            message: `${paths[denied]} 은(는) 도구가 관리하는 파일이라 수정할 수 없습니다.`,
+          });
+        }
+        if (decisions.every((decision) => decision === "allow")) {
+          return Promise.resolve({ behavior: "allow", updatedInput: input });
+        }
       }
     }
+    // A call the planner answered with 항상 허용 must not become a card again.
+    if (this.alwaysAllowed.allows(toolName, input)) {
+      return Promise.resolve({ behavior: "allow", updatedInput: input });
+    }
     return this.handlePermission(toolName, input, opts);
-  }
-
-  /** Editors may write absolute or cwd-relative paths; both must stay inside. */
-  private insideWorkspace(value: string): boolean {
-    const abs = resolve(this.cwd, value);
-    return abs === this.cwd || abs.startsWith(this.cwd + sep);
   }
 
   private handlePermission(
@@ -295,6 +438,9 @@ export class Session {
 
     const input = updatedInput ?? request.input;
     if (decision === "allowAlways") {
+      // Remember the exact call so the daemon itself never re-prompts it;
+      // the CLI's own suggestions cover future sessions' rules.
+      this.alwaysAllowed.record(request.toolName, input);
       // Echo the CLI's own suggestions back so the same call stops prompting.
       // Bash-style calls offer an `addRules` update destined for
       // .claude/settings.local.json; Write and Edit instead offer a session
@@ -351,7 +497,8 @@ export class Session {
         : prompt;
 
     const title = text.trim() || saved.join(", ");
-    if (this.title === "새 기획" && title) {
+    const unnamed = this.title === NEW_PLANNING_TITLE || this.title === NEW_DESIGN_TITLE;
+    if (unnamed && title) {
       this.title = title.slice(0, 80);
     }
 
@@ -378,7 +525,6 @@ export class Session {
     await this.run.interrupt();
     this.setState("idle");
   }
-
   async contextUsage(): Promise<ContextUsage | null> {
     try {
       const usage = await this.run.getContextUsage({ detail: "summary" });
@@ -387,10 +533,92 @@ export class Session {
         maxTokens: usage.maxTokens,
         percentage: usage.percentage,
         model: usage.model,
+        plan: await this.planUsage(),
       };
     } catch {
       return null;
     }
+  }
+
+  /**
+   * The signed-in plan's 5-hour and weekly windows, from the SDK's /usage
+   * control call. API-key sessions answer `rate_limits_available: false` and
+   * any failure just means the composer shows nothing — the context ring
+   * above still works, so a broken experimental call must not take it down.
+   */
+  private async planUsage(): Promise<PlanUsage | null> {
+    try {
+      const usage = await this.run.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({
+        skipBehaviors: true,
+      });
+      if (!usage.rate_limits_available || !usage.rate_limits) return null;
+      return {
+        subscriptionType: usage.subscription_type,
+        fiveHour: this.toPlanWindow(usage.rate_limits.five_hour),
+        sevenDay: this.toPlanWindow(usage.rate_limits.seven_day),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** The SDK's wire shape for one limit window, narrowed to the protocol's. */
+  private toPlanWindow(
+    value: { utilization: number | null; resets_at: string | null } | null | undefined,
+  ): PlanWindow | null {
+    if (!value) return null;
+    return { utilization: value.utilization, resetsAt: value.resets_at };
+  }
+
+  // -------------------------------------------------------------------------
+  // Composer selector chips — mid-session switches (SDK control requests)
+  // -------------------------------------------------------------------------
+
+  /** Effective from the next response. `null` returns to the CLI default. */
+  async setModel(model: string | null): Promise<void> {
+    await this.run.setModel(model ?? undefined);
+    this.selectedModel = model;
+  }
+
+  /** Effective from the next response. `null` clears the override. */
+  async setEffort(effort: EffortLevel | null): Promise<void> {
+    await this.run.applyFlagSettings({ effortLevel: effort ?? null });
+    this.selectedEffort = effort;
+  }
+
+  /** Widening past `default` is the planner's own explicit choice here. */
+  async setPermissionMode(mode: PermissionMode): Promise<void> {
+    await this.run.setPermissionMode(mode);
+    this.permissionMode = mode;
+  }
+
+  /** Everything the composer's chips display, plus the model picker rows. */
+  async selectors(): Promise<SessionSelectors> {
+    const models = await this.run.supportedModels();
+    return {
+      model: this.selectedModel ?? this.model,
+      effort: this.selectedEffort,
+      permissionMode: this.permissionMode,
+      models: models.map((model) => ({
+        value: model.value,
+        displayName: model.displayName,
+        resolvedModel: model.resolvedModel ?? null,
+        description: model.description,
+        supportsEffort: model.supportsEffort ?? false,
+        supportedEffortLevels: model.supportedEffortLevels ?? null,
+      })),
+    };
+  }
+
+  /** The composer's /command palette: names, descriptions, argument hints. */
+  async commands(): Promise<SessionCommand[]> {
+    const commands = await this.run.supportedCommands();
+    return commands.map((command) => ({
+      name: command.name,
+      description: command.description,
+      argumentHint: command.argumentHint ?? "",
+      aliases: command.aliases ?? [],
+    }));
   }
 
   async close(): Promise<void> {

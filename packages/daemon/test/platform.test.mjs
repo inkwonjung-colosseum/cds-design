@@ -139,5 +139,5 @@ test("the daemon still reports a usable status when git is missing", async () =>
     `expected a git warning, got: ${status.warnings.join(" | ")}`,
   );
   assert.equal(typeof status.platform, "string");
-  assert.equal(status.protocolVersion, 3);
+  assert.equal(status.protocolVersion, 5);
 });

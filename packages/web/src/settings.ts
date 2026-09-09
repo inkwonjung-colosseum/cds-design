@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { EffortLevel, SessionModelInfo, Workspace } from "@drafthouse/protocol";
 
 /**
  * Client-side preferences. Everything here belongs to the browser, not the
@@ -28,7 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export const THEMES: ThemeChoice[] = ["system", "dark", "light"];
 
-const KEY = "agent-hub.settings";
+const KEY = "drafthouse.settings";
 
 function oneOf<T extends string>(allowed: readonly T[], value: unknown, fallback: T): T {
   return typeof value === "string" && (allowed as readonly string[]).includes(value)
@@ -132,4 +133,93 @@ export function useSettings(): {
   }, [theme]);
 
   return { settings, update, theme };
+}
+
+// ---------------------------------------------------------------------------
+// Composer chips
+// ---------------------------------------------------------------------------
+
+/**
+ * What the 모델·추론 chips are set to. This is a client preference, not
+ * session state: the daemon starts every session on the CLI's own defaults,
+ * so without remembering the choice here a planner would re-pick it for every
+ * new 기획. Kept per workspace — 기획 and 디자인 are different jobs.
+ */
+export interface ComposerDefaults {
+  model: string | null;
+  effort: EffortLevel | null;
+}
+
+export const NO_COMPOSER_DEFAULTS: ComposerDefaults = { model: null, effort: null };
+
+const EFFORT_LEVELS: EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
+
+export function loadComposerDefaults(workspace: Workspace): ComposerDefaults {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(localStorage.getItem(`drafthouse.composer.${workspace}`) ?? "null");
+  } catch {
+    return NO_COMPOSER_DEFAULTS;
+  }
+  if (!raw || typeof raw !== "object") return NO_COMPOSER_DEFAULTS;
+  const stored = raw as Record<string, unknown>;
+  return {
+    model: typeof stored.model === "string" && stored.model ? stored.model : null,
+    effort: EFFORT_LEVELS.includes(stored.effort as EffortLevel)
+      ? (stored.effort as EffortLevel)
+      : null,
+  };
+}
+
+export function saveComposerDefaults(workspace: Workspace, next: ComposerDefaults): void {
+  try {
+    localStorage.setItem(`drafthouse.composer.${workspace}`, JSON.stringify(next));
+  } catch {
+    // Same quota case as settings: the choice still holds for this tab.
+  }
+}
+
+const MODELS_KEY = "drafthouse.models";
+
+/**
+ * The model rows the daemon last served. Only a live session can be asked for
+ * them, so caching the list is what lets the 모델 chip offer real choices
+ * before a workspace is connected — instead of an empty menu.
+ */
+export function loadModelCatalog(): SessionModelInfo[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(localStorage.getItem(MODELS_KEY) ?? "null");
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry): SessionModelInfo[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    if (typeof row.value !== "string" || typeof row.displayName !== "string") return [];
+    const levels = Array.isArray(row.supportedEffortLevels)
+      ? row.supportedEffortLevels.filter((level): level is EffortLevel =>
+          EFFORT_LEVELS.includes(level as EffortLevel),
+        )
+      : null;
+    return [
+      {
+        value: row.value,
+        displayName: row.displayName,
+        resolvedModel: typeof row.resolvedModel === "string" ? row.resolvedModel : null,
+        description: typeof row.description === "string" ? row.description : "",
+        supportsEffort: row.supportsEffort !== false,
+        supportedEffortLevels: levels,
+      },
+    ];
+  });
+}
+
+export function saveModelCatalog(models: SessionModelInfo[]): void {
+  try {
+    localStorage.setItem(MODELS_KEY, JSON.stringify(models));
+  } catch {
+    // A cache that cannot be written just means the next reload asks again.
+  }
 }

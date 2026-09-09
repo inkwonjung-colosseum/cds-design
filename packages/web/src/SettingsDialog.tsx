@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { DaemonStatus } from "@agent-hub/protocol";
+import type { DaemonStatus } from "@drafthouse/protocol";
+import { RELEASES_FEED_URL, checkForUpdate, type UpdateCheckResult } from "@drafthouse/protocol";
 import type { Daemon } from "./daemon-client";
 import { CloseIcon } from "./icons";
 import { THEMES, type SendKey, type Settings, type ThemeChoice } from "./settings";
@@ -97,6 +98,7 @@ export function SettingsDialog({
   status,
   connection,
   daemon,
+  onOpenOnboarding,
   onReconnect,
   onForgetUrl,
   onClose,
@@ -108,12 +110,47 @@ export function SettingsDialog({
   connection: string;
   /** The connected repo's url/PAT live daemon-side; the dialog only edits them. */
   daemon: Daemon;
+  /** Opens the first-run wizard again (DESIGN §8 checks). */
+  onOpenOnboarding: () => void;
   onReconnect: (url: string) => void;
   onForgetUrl: () => void;
   onClose: () => void;
 }) {
   const [url, setUrl] = useState(daemonUrl ?? "");
   const panel = useRef<HTMLDivElement>(null);
+  const [update, setUpdate] = useState<UpdateCheckResult | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  /**
+   * 수동 업데이트 확인(DESIGN §7): 데스크톱 다리가 있으면 그것으로,
+   * 브라우저에서는 같은 공유 로직을 window.fetch 로 돌린다 — 로직은
+   * @drafthouse/protocol 의 update 모듈 하나다.
+   */
+  const checkUpdate = async () => {
+    setCheckingUpdate(true);
+    setUpdateError(null);
+    try {
+      const bridge = (window as { drafthouseDesktop?: { updateCheck: () => Promise<UpdateCheckResult> } })
+        .drafthouseDesktop;
+      if (bridge) {
+        const result = await bridge.updateCheck();
+        if ("error" in result && result.error) throw new Error(String(result.error));
+        setUpdate(result);
+      } else {
+        setUpdate(
+          await checkForUpdate("0.1.0", RELEASES_FEED_URL, async (feedUrl) => {
+            const response = await fetch(feedUrl);
+            return { ok: response.ok, status: response.status, json: await response.json() };
+          }),
+        );
+      }
+    } catch (e) {
+      setUpdateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   // The repo url arrives asynchronously (repo.status); adopt it until the
   // planner edits the field, so reopening the dialog shows what is stored.
@@ -321,6 +358,20 @@ export function SettingsDialog({
             )}
 
             <div className="settings__row">
+              <button type="button" onClick={onOpenOnboarding}>
+                온보딩 다시 보기
+              </button>
+              <button type="button" disabled={checkingUpdate} onClick={() => void checkUpdate()}>
+                {checkingUpdate ? "확인 중…" : "업데이트 확인"}
+              </button>
+              {update && (
+                <span className="setting__hint">
+                  {update.updateAvailable
+                    ? `새 버전 ${update.version}${update.notes ? ` — ${update.notes}` : ""}`
+                    : `최신 버전입니다 (${update.version})`}
+                </span>
+              )}
+              {updateError && <span className="setting__hint">{updateError}</span>}
               <button
                 type="button"
                 className="danger"

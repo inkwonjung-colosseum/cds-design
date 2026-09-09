@@ -1,7 +1,0 @@
-# Marks this directory as its own pnpm root. Without it a copy that lands
-# inside another monorepo would be installed as part of that workspace.
-packages: []
-
-# Vite depends on esbuild, whose install script fetches the platform binary.
-allowBuilds:
-  esbuild: true

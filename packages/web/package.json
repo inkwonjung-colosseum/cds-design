@@ -1,5 +1,5 @@
 {
-  "name": "@agent-hub/web",
+  "name": "@drafthouse/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@agent-hub/protocol": "workspace:*",
+    "@drafthouse/protocol": "workspace:*",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-image": "^3.31.3",
+    "@tiptap/extension-link": "^3.31.3",
+    "@tiptap/extension-table": "^3.31.3",
+    "@tiptap/extension-table-cell": "^3.31.3",
+    "@tiptap/extension-table-header": "^3.31.3",
+    "@tiptap/extension-table-row": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",

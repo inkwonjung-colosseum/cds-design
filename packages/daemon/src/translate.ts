@@ -1,4 +1,4 @@
-import type { ChatEvent, PermissionMode } from "@agent-hub/protocol";
+import type { ChatEvent, PermissionMode } from "@drafthouse/protocol";
 
 /**
  * Turns raw SDKMessage values into the small, UI-shaped ChatEvent union.
@@ -89,6 +89,10 @@ export class MessageTranslator {
           text: `Permission denied for ${String(m.tool_name ?? "a tool")}`,
         },
       ];
+    }
+    if (m.subtype === "local_command_output") {
+      // A /command the planner ran from the composer; its text is the answer.
+      return [{ kind: "notice", level: "info", text: String(m.content ?? "") }];
     }
     return [];
   }

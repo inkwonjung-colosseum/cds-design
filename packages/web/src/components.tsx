@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AskQuestion } from "@agent-hub/protocol";
+import type { AskQuestion } from "@drafthouse/protocol";
 import type { Block, PendingPermission, PendingQuestion } from "./daemon-client";
 import { Markdown } from "./Markdown";
 import { CheckIcon, CloseIcon, ShieldIcon, SparkIcon, ChevronRightIcon } from "./icons";
@@ -106,8 +106,30 @@ function activityLine(tools: Array<Extract<Block, { type: "tool" }>>): string {
   return parts.join(" · ");
 }
 
-function ActivitySummary({ tools }: { tools: Array<Extract<Block, { type: "tool" }>> }) {
+/**
+ * Claude's private reasoning, folded by default. While the turn is running it
+ * reads as live ("생각 중…"); once the turn ends the same fold reads as a
+ * record ("생각 과정") — a finished transcript must not look like it is still
+ * thinking.
+ */
+function ThinkingBlock({ block }: { block: Extract<Block, { type: "thinking" }> }) {
+  return (
+    <details className="thinking">
+      <summary>{block.streaming ? "생각 중…" : "생각 과정"}</summary>
+      <pre>{block.text}</pre>
+    </details>
+  );
+}
+
+/**
+ * A run folds tools AND the thinking between them into one row: Claude thinks
+ * between tool calls, so tool-only grouping rendered a finished turn as a
+ * stack of near-identical bars. The head counts the tools; the body replays
+ * the steps, thinking included, for the planner who needs the detail.
+ */
+function ActivitySummary({ steps }: { steps: ActivityStep[] }) {
   const [open, setOpen] = useState(false);
+  const tools = steps.filter((step): step is Extract<Block, { type: "tool" }> => step.type === "tool");
   const running = tools.some((tool) => !tool.done);
   const failed = tools.some((tool) => tool.isError);
 
@@ -123,43 +145,68 @@ function ActivitySummary({ tools }: { tools: Array<Extract<Block, { type: "tool"
       </button>
       {open && (
         <div className="activity__body">
-          {tools.map((tool) => (
-            <ToolBlock key={tool.id} block={tool} />
-          ))}
+          {steps.map((step) =>
+            step.type === "tool" ? <ToolBlock key={step.id} block={step} /> : <ThinkingBlock key={step.id} block={step} />,
+          )}
         </div>
       )}
     </div>
   );
 }
 
+type ActivityStep = Extract<Block, { type: "tool" }> | Extract<Block, { type: "thinking" }>;
+
 type Row =
   | { kind: "block"; block: Block }
-  | { kind: "activity"; id: string; tools: Array<Extract<Block, { type: "tool" }>> };
+  | { kind: "activity"; id: string; steps: ActivityStep[] };
 
-/** Runs of adjacent tool blocks become one activity row; anything else ends a run. */
+/**
+ * A run ends where the planner's attention ends: a user bubble, assistant
+ * text, a turn end, or a notice. Thinking alone never starts a run of one.
+ */
 function groupActivity(blocks: Block[]): Row[] {
   const rows: Row[] = [];
+  let run: ActivityStep[] | null = null;
+  const flush = () => {
+    if (!run) return;
+    if (run.every((step) => step.type === "thinking")) {
+      for (const step of run) rows.push({ kind: "block", block: step });
+    } else {
+      rows.push({ kind: "activity", id: `activity-${run[0]!.id}`, steps: run });
+    }
+    run = null;
+  };
   for (const block of blocks) {
-    if (block.type !== "tool") {
-      rows.push({ kind: "block", block });
+    if (block.type === "tool" || block.type === "thinking") {
+      run = run ?? [];
+      run.push(block);
       continue;
     }
-    const last = rows[rows.length - 1];
-    if (last?.kind === "activity") last.tools.push(block);
-    else rows.push({ kind: "activity", id: `activity-${block.id}`, tools: [block] });
+    flush();
+    rows.push({ kind: "block", block });
   }
+  flush();
   return rows;
 }
 
-export function Transcript({ blocks }: { blocks: Block[] }) {
+export function Transcript({ blocks, live = true }: { blocks: Block[]; live?: boolean }) {
   if (blocks.length === 0) {
-    return <p className="empty">기획서를 첨부하고 만들고 싶은 화면을 말해 주세요.</p>;
+    return <p className="empty">메시지를 보내면 대화가 여기에 이어집니다.</p>;
   }
-  const rows = groupActivity(blocks);
+  // A reloaded history replays its events without a guarantee that the last
+  // turn's end marker is in the tape, so a finished session's trailing fold
+  // would keep claiming to think. Not live → nothing is thinking.
+  const rows = groupActivity(
+    live
+      ? blocks
+      : blocks.map((block) =>
+          block.type === "thinking" && block.streaming ? { ...block, streaming: false } : block,
+        ),
+  );
   return (
     <div className="transcript">
       {rows.map((row) => {
-        if (row.kind === "activity") return <ActivitySummary key={row.id} tools={row.tools} />;
+        if (row.kind === "activity") return <ActivitySummary key={row.id} steps={row.steps} />;
         const block = row.block;
         switch (block.type) {
           case "user":
@@ -182,12 +229,7 @@ export function Transcript({ blocks }: { blocks: Block[] }) {
               </div>
             );
           case "thinking":
-            return (
-              <details key={block.id} className="thinking">
-                <summary>생각 중</summary>
-                <pre>{block.text}</pre>
-              </details>
-            );
+            return <ThinkingBlock key={block.id} block={block} />;
           case "tool":
             return <ToolBlock key={block.id} block={block} />;
           // Cost and duration are a developer's accounting, not a planner's.

@@ -4,12 +4,20 @@ import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { promisify } from "node:util";
-import type { DaemonStatus } from "@agent-hub/protocol";
-import { PROTOCOL_VERSION } from "@agent-hub/protocol";
+import type { DaemonStatus } from "@drafthouse/protocol";
+import { PROTOCOL_VERSION } from "@drafthouse/protocol";
 
 const run = promisify(execFile);
 
-export const HUB_DIR = join(homedir(), ".agent-hub");
+/**
+ * Everything Drafthouse writes lives under one folder in the user's home: the
+ * repo clone, the Confluence mirror, and this daemon's own settings. One root
+ * is one thing to back up, explain, or delete.
+ */
+export const DRAFTHOUSE_DIR = join(homedir(), "drafthouse");
+
+/** Daemon settings: `daemon.json`, `repo.json`, `confluence.json`. */
+export const CONFIG_DIR = join(DRAFTHOUSE_DIR, "config");
 
 export type Platform = "win32" | "darwin" | "linux";
 
@@ -184,7 +192,7 @@ export async function resolveClaudeExecutable(override?: string): Promise<string
   const platform = currentPlatform();
   const candidates = [
     override,
-    process.env.AGENT_HUB_CLAUDE_BIN,
+    process.env.DRAFTHOUSE_CLAUDE_BIN,
     ...claudeCandidates(platform, homedir()),
   ].filter((value): value is string => Boolean(value));
 
@@ -267,7 +275,9 @@ export async function buildStatus(input: {
    * and only when that repo declares a registry. Null otherwise.
    */
   registryProbeDir: string | null;
-}): Promise<DaemonStatus> {
+  // Plan limits, the model list and the project registry are the server's to
+  // own across sessions, so the machine report stops short of the wire shape.
+}): Promise<Omit<DaemonStatus, "planUsage" | "models" | "projects" | "activeProject">> {
   const warnings: string[] = [];
   const apiKeyInEnv = Boolean(process.env.ANTHROPIC_API_KEY);
   if (apiKeyInEnv) {
@@ -403,6 +413,30 @@ export async function listFiles(cwd: string): Promise<string[]> {
   files.sort();
   fileCache.set(cwd, { files, readAt: Date.now() });
   return files;
+}
+
+/**
+ * What `@` shows: a directory listing, not a flat dump of every path. An empty
+ * query lists the root's own children, `dir/` lists that folder's, and anything
+ * else falls back to the ranked substring search a planner typing a filename
+ * expects. Folders come back with a trailing slash, so the caller can drill in.
+ *
+ * Dot-entries stay out of the listing: `.claude/`, `.npmrc` and friends mean
+ * nothing to a planner picking a document. Typing the name still finds them.
+ */
+export function browseFiles(files: string[], query: string, limit: number): string[] {
+  if (query !== "" && !query.endsWith("/")) return filterFiles(files, query, limit);
+  const directories = new Set<string>();
+  const plain: string[] = [];
+  for (const file of files) {
+    if (!file.startsWith(query)) continue;
+    const rest = file.slice(query.length);
+    if (rest.startsWith(".")) continue;
+    const slash = rest.indexOf("/");
+    if (slash === -1) plain.push(file);
+    else directories.add(`${query}${rest.slice(0, slash)}/`);
+  }
+  return [...[...directories].sort(), ...plain.sort()].slice(0, limit);
 }
 
 /** Rank matches so a hit in the filename beats a hit deep in the path. */

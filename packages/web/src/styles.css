@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Agent Hub — design system
+   Drafthouse — design system
    A quiet, mono-first console. Neutral graphite surfaces, hairline borders,
    one restrained steel accent for state. No gradients, no glows, no bubbles —
    the transcript reads like a session log, the chrome like an editor.
@@ -164,6 +164,8 @@ input:focus, textarea:focus, select:focus {
   transition: background 0.12s, color 0.12s;
 }
 .ghost:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+/* A ghost button carrying a count of work waiting on it (기획's 게시). */
+.ghost--count:not(:disabled) { color: var(--accent); }
 
 .card__actions button:not(.primary):not(.danger) {
   background: var(--panel-2);
@@ -341,6 +343,9 @@ input:focus, textarea:focus, select:focus {
 .row-delete:hover { color: var(--danger); background: var(--danger-soft); }
 .dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; flex: none; }
 .dot--live { background: var(--ok); }
+/* Finished-unseen, not running: a hollow ring so the two never read alike at
+   a glance, which is the only job either of them has. */
+.dot--done { background: transparent; box-shadow: inset 0 0 0 1.5px var(--accent); }
 .hint { color: var(--muted); font-size: 12px; margin: 0; }
 
 .tag {
@@ -736,19 +741,22 @@ input:focus, textarea:focus, select:focus {
 .option__label { font-size: 12.5px; font-weight: 600; }
 .option__description { font-size: 11px; color: var(--muted); line-height: 1.45; }
 
-/* composer — grounded input bar, not a floating pill ------------------------*/
+/* composer — paseo-style floating card --------------------------------------*/
 
 .composer {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 0;
-  padding: 12px 28px 12px;
-  background: var(--bg-2);
-  border-top: 1px solid var(--line-soft);
-  border-radius: 0;
+  margin: 4px 18px 14px;
+  padding: 11px 13px 9px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-pop);
+  transition: border-color 0.12s;
 }
+.composer:focus-within { border-color: var(--line-hover); }
 .composer textarea {
   resize: none;
   min-height: 24px;
@@ -787,8 +795,79 @@ input:focus, textarea:focus, select:focus {
 .chip .ghost { padding: 0 4px; font-size: 13px; line-height: 1; color: var(--muted); }
 .chip .ghost:hover { color: var(--danger); }
 
-.toolbar { display: flex; align-items: center; gap: 4px; }
-.toolbar__spacer { flex: 1; }
+
+/* selector chips — model · effort · permission mode ----------------------------------*/
+
+/* Chips wrap as whole chips, never mid-label: a model name broken across two
+   lines ("Sonnet" / "5") is what a narrow chat column used to do. */
+.selectors { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-left: 2px; }
+.selector { position: relative; display: inline-flex; }
+.selector__backdrop { position: fixed; inset: 0; z-index: 40; background: transparent; border: 0; padding: 0; cursor: default; }
+.selector__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  padding: 5px 9px;
+  border-radius: var(--r-md);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font: 500 11.5px var(--sans);
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.selector__chip span,
+.selector__chip svg { flex: none; }
+.selector__chip:hover:not(:disabled),
+.selector__chip[aria-expanded="true"] {
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+.selector__chip:disabled { opacity: 0.45; cursor: default; }
+.selector__menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 45;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--panel-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  padding: 4px;
+  box-shadow: var(--shadow-pop);
+}
+.selector__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  padding: 6px 8px;
+  color: var(--text);
+  font: 500 12px var(--sans);
+}
+.selector__row:hover { background: var(--accent-soft); }
+.selector__row[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--accent); }
+.selector__check { flex: none; width: 12px; color: var(--accent); align-self: center; }
+.selector__label { flex: none; white-space: nowrap; }
+.selector__hint {
+  color: var(--muted);
+  font: 400 10.5px var(--sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 4px; }
+/* The spacer only pushes when everything fits on one line. */
+.toolbar__spacer { flex: 1 1 0; min-width: 0; }
 
 .toolbar__icon {
   display: inline-flex;
@@ -796,7 +875,7 @@ input:focus, textarea:focus, select:focus {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
   background: transparent;
   border: 1px solid transparent;
   color: var(--muted);
@@ -806,27 +885,65 @@ input:focus, textarea:focus, select:focus {
 .toolbar__stop {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   background: transparent;
   color: var(--danger);
   border: 1px solid var(--danger-line);
-  border-radius: var(--r-md);
-  padding: 6px 14px;
+  border-radius: 999px;
   transition: background 0.12s;
 }
 .toolbar__stop:hover:not(:disabled) { background: var(--danger-soft); }
 
-.composer .primary {
+.composer__send {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 14px;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--text);
+  color: var(--bg);
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.composer__send:hover:not(:disabled) { opacity: 0.85; }
+.composer__send:disabled {
+  background: var(--panel-3);
+  color: var(--muted);
+  cursor: default;
+  opacity: 1;
 }
 
-/* context ring --------------------------------------------------------------*/
+/* context ring + plan limits ------------------------------------------------*/
 
 .ring { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font: 500 10.5px var(--mono); margin-right: 6px; }
 .ring__text { font-variant-numeric: tabular-nums; }
+/* Pinned as its own row at the top of the composer card: the limits are
+   status, not a control, so they sit above the input instead of wrapping in
+   among the toolbar chips. */
+.limits { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.limits__label { color: var(--muted); font: 500 10.5px var(--mono); margin-right: 3px; }
+.limit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: var(--muted);
+  font: 500 10.5px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.limit__dot { width: 5px; height: 5px; border-radius: 999px; background: var(--accent); }
+.limit__left { color: var(--muted); font-weight: 400; }
+.limit__left:empty { display: none; }
+.limit--warn { color: var(--warn); border-color: var(--warn-line); }
+.limit--warn .limit__dot { background: var(--warn); }
+.limit--danger { color: var(--danger); border-color: var(--danger-line); }
+.limit--danger .limit__dot { background: var(--danger); }
 
 /* autocomplete ---------------------------------------------------------------*/
 
@@ -846,8 +963,8 @@ input:focus, textarea:focus, select:focus {
 }
 .autocomplete__row {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   background: transparent;
@@ -857,7 +974,15 @@ input:focus, textarea:focus, select:focus {
   color: var(--text);
 }
 .autocomplete__row--on { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.autocomplete__icon { flex: none; display: inline-flex; color: var(--muted); align-self: center; }
 .autocomplete__label { font: 500 12px var(--mono); flex-shrink: 0; }
+.autocomplete__hint {
+  color: var(--muted);
+  font: 400 11px var(--sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* --------------------------------------------------------------- settings */
 
 /* the way in before there is a daemon to talk to */
@@ -996,6 +1121,13 @@ input:focus, textarea:focus, select:focus {
 }
 .planner__spacer { flex: 1; }
 
+/* Active-project switcher: the composer's selector chip, in the header. Only
+   the menu differs — it drops, where the composer's rises off the bottom of
+   the window. */
+.project { flex: none; align-items: center; gap: 8px; }
+.project__name { font: 500 12px var(--sans); color: var(--muted); }
+.project .selector__menu { top: calc(100% + 8px); bottom: auto; }
+
 /* What the daemon knows is wrong — no CLI, not signed in, no pnpm. A planner
    has no terminal to read it off, so it sits above the work. */
 .planner__warnings {
@@ -1013,7 +1145,15 @@ input:focus, textarea:focus, select:focus {
   flex: 1;
   min-height: 0;
 }
-.planner__body--single { grid-template-columns: minmax(0, 1fr); place-items: center; }
+
+/* The chat column: the session strip sits above the transcript and neither
+   scrolls the other. */
+.planner__chatcol {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
 
 .planner__sessions {
   border-right: 1px solid var(--line-soft);
@@ -1031,11 +1171,22 @@ input:focus, textarea:focus, select:focus {
 }
 .planner__chat .scroll { padding: 18px 22px 12px; }
 
-.planner__preview {
-  border-left: 1px solid var(--line-soft);
-  background: var(--panel);
-  min-width: 0;
+/* The 화면 segment's own header, holding 저장 · 개발자에게 넘기기 and the state
+   the developer left behind. The mirror's 게시 lives over the page tree — each
+   half publishes to its own place, so neither button belongs in the shared
+   header. */
+.planner__previewcol {
   display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.planner__previewbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  flex: none;
 }
 
 /* progress panel ------------------------------------------------------------*/
@@ -1179,6 +1330,621 @@ input:focus, textarea:focus, select:focus {
 }
 .preview__blank h2 { margin: 0; font: 600 14px var(--sans); color: var(--text); }
 
+/* 저장 검토 -------------------------------------------------------------------*/
+
+.modal__panel--diff { max-width: 720px; }
+
+.diff__stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.diff__files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.diff__filerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  cursor: pointer;
+}
+.diff__filerow:hover { background: var(--bg-2); }
+.diff__file:last-child .diff__filerow { border-bottom: 0; }
+
+.diff__badge {
+  flex: none;
+  font: 500 10px var(--sans);
+  letter-spacing: 0.04em;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  color: var(--muted);
+}
+.diff__badge--added { color: var(--ok, var(--text)); border-color: var(--line); }
+.diff__badge--deleted { color: var(--danger); border-color: var(--danger-line); }
+.diff__badge--modified { color: var(--text-2); }
+.diff__badge--renamed { color: var(--muted); }
+
+.diff__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 11.5px var(--mono);
+  color: var(--text);
+}
+.diff__count { flex: none; font: 500 11px var(--mono); color: var(--muted); }
+
+.diff__hunks { border-top: 1px solid var(--line-soft); background: var(--bg-2); }
+.diff__hunk {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line-soft);
+  font: 400 11px/1.5 var(--mono);
+  color: var(--text-2);
+  white-space: pre;
+}
+.diff__file:last-child .diff__hunks .diff__hunk:last-child { border-bottom: 0; }
+
+.diff__fail {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  font: 400 11px/1.5 var(--mono);
+  color: var(--danger);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 개발자에게 넘기기 -----------------------------------------------------------*/
+
+.modal__panel--handoff { max-width: 640px; }
+
+/* Both fields carry the planner's own words and want the whole panel width;
+   .setting--wide stretches the row but not the control inside it. */
+.handoff__field .setting__control { display: block; }
+.handoff__field input,
+.handoff__field textarea { width: 100%; }
+.handoff__body {
+  min-height: 110px;
+  resize: vertical;
+  font: 400 12.5px/1.6 var(--sans);
+}
+
+.handoff__done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 0 10px;
+}
+.handoff__state { font: 500 11px var(--mono); color: var(--muted); }
+
+/* The state chip in the 화면 header: the only place the developer's answer
+   surfaces, and — since nothing polls it — the click that re-reads it. */
+.handoff__chip {
+  display: inline-flex;
+  align-items: center;
+  /* the header is flex-end, so the chip takes the free space on the left */
+  margin-right: auto;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font: 500 11.5px var(--mono);
+  color: var(--muted);
+  text-decoration: none;
+}
+.handoff__chip:hover { color: var(--text); border-color: var(--line-hover); }
+.handoff__chip--changes_requested { color: var(--warn); border-color: var(--warn-line); }
+.handoff__chip--merged { color: var(--ok); }
+
+/* page tree -------------------------------------------------------------------*/
+
+.pagetree { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; overflow-y: auto; }
+.pagetree__list { margin: 0; padding: 0 0 0 10px; list-style: none; }
+.pagetree__space > .pagetree__list { padding-left: 0; }
+.pagetree__row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: var(--r-sm); }
+.pagetree__row--active { background: var(--panel-3); }
+/* The pipeline stage (PLAN §2.4). Fixed width so the marks line up into a
+   scannable column — a mark that shifts with the title cannot be scanned. */
+.pagetree__stage {
+  flex: none;
+  width: 12px;
+  text-align: center;
+  font: 400 10px var(--sans);
+  color: var(--muted);
+  cursor: default;
+}
+.pagetree__stage--built { color: var(--text); }
+.pagetree__stage--handed { color: var(--accent); }
+.pagetree__stage--merged { color: var(--ok); }
+
+.pagetree__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 3px 2px;
+  font: 500 12px var(--sans);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.pagetree__row--active .pagetree__title { color: var(--text); }
+.pagetree__flag {
+  flex: none;
+  font: 500 10px var(--sans);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 0 5px;
+}
+.pagetree__flag--conflict { color: var(--danger); border-color: var(--danger-line); }
+/* A page that exists only in the mirror: 게시 will create it in Confluence. */
+.pagetree__flag--new { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.pagetree__link { flex: none; color: var(--muted); text-decoration: none; font-size: 11px; }
+.pagetree__link:hover { color: var(--text); }
+
+.pagetree__empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.pagetree__filter { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 0 6px; }
+/* Open in the toolbar, the space picker takes its own row under the search. */
+.pagetree__cloner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.pagetree__filter .pagetree__cloner { flex: 1 1 100%; }
+.pagetree__cloner select { flex: 1; min-width: 140px; }
+.pagetree__cloner-error { flex: 1 1 100%; margin: 0; color: var(--danger); font-size: 11.5px; }
+.pagetree__search {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 7px;
+  font: 400 11.5px var(--sans);
+  border-radius: var(--r-sm);
+}
+.pagetree__search::-webkit-search-cancel-button { filter: grayscale(1); opacity: 0.5; }
+.pagetree__toggle {
+  flex: none;
+  padding: 3px 7px;
+  font: 500 10.5px var(--sans);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.pagetree__toggle--on { color: var(--text); background: var(--panel-3); border-color: var(--line-hover); }
+
+.pagetree__space { display: flex; flex-direction: column; gap: 2px; }
+.pagetree__space + .pagetree__space { margin-top: 6px; }
+.pagetree__space-head { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
+.pagetree__space-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: 600 10.5px var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pagetree__space-name:hover { color: var(--text-2); }
+.pagetree__caret { font-size: 9px; opacity: 0.7; }
+.pagetree__space-meta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 500 10px var(--mono);
+  color: var(--muted);
+}
+.pagetree__space-meta--error { color: var(--danger); }
+.dot--busy { background: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.25; } }
+.pagetree__sync {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  opacity: 0;
+  cursor: pointer;
+}
+.pagetree__space-head:hover .pagetree__sync,
+.pagetree__sync:focus-visible { opacity: 1; }
+.pagetree__sync:hover:not(:disabled) { color: var(--text); background: var(--panel-3); }
+.pagetree__sync:disabled { cursor: default; }
+.pagetree__row--dim .pagetree__title { color: var(--muted); }
+
+.planner__doc {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--line-soft);
+}
+/* Both halves stay mounted — the editor holds unsaved text, the preview holds
+   a running app — so only one is shown and [hidden] has to beat the flex. */
+.planner__segment { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.planner__segment[hidden] { display: none; }
+
+/* 문서 | 화면. Two mutually exclusive views of the SAME page, which is why
+   this is a segmented control and not a pair of tabs: tabs would read as two
+   places to be, and there is only one — the page the tree has open. */
+.segment {
+  display: flex;
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  flex: none;
+}
+.segment button {
+  padding: 4px 14px;
+  font: 500 12px var(--sans);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.segment button:hover { color: var(--text); }
+.segment .segment__on {
+  color: var(--text);
+  background: var(--panel-3);
+  border-color: var(--line);
+}
+
+.doc-editor { display: flex; flex-direction: column; flex: 1; min-width: 0; position: relative; }
+.doc-editor--empty { justify-content: center; padding: 28px; }
+.doc-editor__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.doc-editor__title {
+  flex: 1;
+  min-width: 0;
+  font: 600 14px var(--sans);
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  padding: 2px 0;
+}
+.doc-editor__title:focus { border-bottom-color: var(--line); outline: none; }
+
+.doc-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.doc-tool {
+  padding: 3px 9px;
+  font: 500 11.5px var(--sans);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.doc-tool--on { background: var(--panel-3); color: var(--text); border-color: var(--line-hover); }
+.doc-tool--file { display: inline-flex; align-items: center; }
+
+.doc-editor__content { flex: 1; overflow-y: auto; }
+.doc-editor__content .tiptap { padding: 18px 22px 40px; outline: none; }
+.doc-editor__content .tiptap p { margin: 0 0 0.7em; line-height: 1.65; }
+.doc-editor__content .tiptap h1, .doc-editor__content .tiptap h2, .doc-editor__content .tiptap h3 { margin: 1.1em 0 0.5em; }
+.doc-editor__content .tiptap ul, .doc-editor__content .tiptap ol { margin: 0 0 0.7em; padding-left: 1.4em; }
+.doc-editor__content .tiptap pre {
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font: 400 12px/1.55 var(--mono);
+  overflow-x: auto;
+}
+.doc-editor__content .tiptap img { max-width: 100%; border-radius: var(--r-sm); }
+.doc-editor__content .tiptap table { border-collapse: collapse; margin: 0 0 0.8em; }
+.doc-editor__content .tiptap th, .doc-editor__content .tiptap td {
+  border: 1px solid var(--line);
+  padding: 5px 9px;
+  font-size: 12.5px;
+  min-width: 60px;
+}
+.doc-editor__content .tiptap th { background: var(--bg-2); }
+
+.doc-atom {
+  margin: 0.4em 0 0.9em;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  padding: 8px 12px;
+  position: relative;
+}
+.doc-atom__head { font: 500 10px var(--sans); letter-spacing: 0.05em; color: var(--muted); }
+.doc-atom__label { font: 500 11.5px var(--sans); color: var(--text-2); margin-top: 2px; }
+.doc-atom__xml {
+  margin: 6px 0 0;
+  max-height: 72px;
+  overflow: hidden;
+  font: 400 10.5px/1.5 var(--mono);
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.doc-editor__content .tiptap .doc-atom.ProseMirror-selectednode { border-color: var(--accent); }
+
+.doc-editor__raw {
+  flex: 1;
+  resize: none;
+  border: 0;
+  outline: none;
+  padding: 18px 22px 40px;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 12.5px/1.7 var(--mono);
+}
+.doc-editor__lock { margin: 0; border-radius: 0; border-left: 0; border-right: 0; }
+
+.doc-editor__quotefloat {
+  position: absolute;
+  top: 96px;
+  right: 26px;
+  z-index: 5;
+}
+
+.chip--quote { gap: 6px; }
+.chip--quote .chip__dismiss {
+  margin-left: 2px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.modal__panel--conflict { max-width: 860px; }
+
+/* The 게시 confirm dialog: one row per pending page — flag, title, version
+   bump, ± line counts — with the diff one click away, so consent is about
+   something the planner actually saw. */
+.modal__panel--publish { max-width: 720px; }
+.publish__list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.publish__page { border: 1px solid var(--line-soft); border-radius: var(--r-lg, 8px); padding: 8px 10px; }
+.publish__page-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.publish__title { font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.publish__ver { color: var(--muted); font: 500 10.5px var(--mono); font-variant-numeric: tabular-nums; }
+.publish__delta { color: var(--accent); font: 500 10.5px var(--mono); font-variant-numeric: tabular-nums; }
+.publish__delta--minus { color: var(--danger); }
+.publish__page-head .ghost { margin-left: auto; }
+.publish__conflict { margin: 6px 0 0; color: var(--danger); font-size: 11.5px; }
+.publish__diff {
+  margin: 8px 0 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm, 6px);
+  background: var(--panel-2);
+  font: 11px/1.5 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.conflict__sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.conflict__side {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  padding: 10px 12px;
+  min-width: 0;
+}
+.conflict__side h3 { margin: 0 0 8px; font: 600 12px var(--sans); color: var(--text-2); }
+.conflict__side pre {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  font: 400 11px/1.55 var(--mono);
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* onboarding --------------------------------------------------------------------*/
+
+.onboarding {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 32px 24px;
+}
+.planner--onboarding { display: flex; }
+.onboarding__head h1 { margin: 0 0 6px; font: 600 20px var(--sans); color: var(--text); }
+.onboarding__steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.onboarding__step {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.onboarding__step--fail { border-color: var(--danger-line); }
+.onboarding__step--warn { border-color: var(--warn-line); }
+.onboarding__step--pass { border-color: var(--line-soft); }
+.onboarding__stephead { display: flex; align-items: center; gap: 9px; }
+.onboarding__stephead h2 { margin: 0; font: 600 13.5px var(--sans); color: var(--text); flex: 1; }
+.onboarding__stepnum {
+  font: 600 11px var(--mono);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.onboarding__glyph { font: 600 13px var(--sans); width: 18px; text-align: center; }
+.onboarding__glyph--pass { color: var(--ok); }
+.onboarding__glyph--warn { color: var(--warn); }
+.onboarding__glyph--fail { color: var(--danger); }
+.onboarding__status { font: 500 11px var(--sans); color: var(--muted); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 1px 7px; }
+.onboarding__detail { margin: 0; font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
+.onboarding__inputs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.onboarding__inputs input { flex: 1; min-width: 180px; }
+.onboarding__picker select { flex: 1; min-width: 200px; }
+.onboarding__fixrow { display: flex; }
+.onboarding__done { display: flex; justify-content: center; padding-top: 4px; }
+
+/* preview comment pins -----------------------------------------------------------*/
+
+.pins {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 9px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+}
+.pins__head { display: flex; align-items: baseline; gap: 10px; }
+.pins__head strong { font: 600 12.5px var(--sans); color: var(--text); }
+.pins__list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.pins__list li { font-size: 12px; color: var(--text-2); display: flex; gap: 8px; align-items: baseline; }
+.pins__component {
+  flex: none;
+  font: 500 10.5px var(--mono);
+  color: var(--accent);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 0 5px;
+}
+.pins__comment { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* session tab strip --------------------------------------------------------*/
+
+/* The open 기획서's threads, above the transcript. Reads as the chat column's
+   own header row: one hairline under it, the tabs themselves in the header's
+   기획/디자인 vocabulary. */
+.sessiontabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel);
+}
+/* Threads scroll, the two + actions never do: they must stay reachable on a
+   page that collected a dozen of them. */
+.sessiontabs__strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.sessiontabs__strip::-webkit-scrollbar { display: none; }
+.sessiontabs__spacer { flex: 1; }
+
+.sessiontab-wrap { position: relative; flex: none; }
+.sessiontab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 210px;
+  /* right padding leaves room for the × that sits over the tab */
+  padding: 4px 24px 4px 9px;
+  font: 500 12px var(--sans);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.sessiontab:hover { background: var(--panel-2); color: var(--text-2); }
+.sessiontab--on { background: var(--panel-3); color: var(--text); border-color: var(--line-hover); }
+.sessiontab__kind {
+  flex: none;
+  font: 500 10px var(--mono);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.sessiontab--on .sessiontab__kind { color: var(--accent); }
+.sessiontab__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Same affordance as a sidebar row's delete, so closing a thread is learned
+   once: hidden until the tab is hovered or the × itself takes focus. */
+.sessiontab__close {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s, background 0.1s;
+}
+.sessiontab-wrap:hover .sessiontab__close,
+.sessiontab__close:focus-visible { opacity: 1; }
+.sessiontab__close:hover { color: var(--danger); background: var(--danger-soft); }
+
 /* ---------------------------------------------------------------- responsive */
 
 @media (max-width: 880px) {
@@ -1195,4 +1961,74 @@ input:focus, textarea:focus, select:focus {
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* 프리뷰 툴바 ------------------------------------------------------------------*/
+
+/* [화면 ▾] [default|empty] … [모바일|데스크톱] [새 창] (PLAN D7). The origin
+   line is the flexible one, so the picker and the state chips stay left with
+   the screen they describe and the viewing controls stay right. */
+.preview__spacer { flex: 1; min-width: 0; }
+
+.preview__screens {
+  flex: none;
+  max-width: 180px;
+  padding: 3px 6px;
+  font: 500 11.5px var(--sans);
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.preview__states { display: flex; gap: 2px; flex: none; }
+.preview__state {
+  padding: 3px 8px;
+  font: 500 10.5px var(--mono);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.preview__state:hover { color: var(--text); }
+/* Same selected affordance as the 문서 | 화면 segment: two things in one column
+   that both mean "this is the one you are looking at" must not read
+   differently. */
+.preview__state--on { color: var(--text); background: var(--panel-3); border-color: var(--line); }
+
+.preview__width { display: flex; gap: 2px; flex: none; }
+.preview__widthbtn {
+  padding: 3px 7px;
+  font: 500 10.5px var(--sans);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.preview__widthbtn:hover { color: var(--text); }
+.preview__widthbtn--on { color: var(--text); background: var(--panel-3); border-color: var(--line); }
+
+/* The frame's container, and the only thing 폭 touches. The app is never told
+   which width is selected — it just sees its own viewport, as it would on a
+   phone. 390px is the logical width of the current baseline iPhone; the gutter
+   and the centring are what make a narrow frame read as a device rather than
+   as a layout that broke. */
+.preview__stage {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-height: 0;
+}
+.preview__stage--mobile {
+  padding: 14px 0;
+  background: var(--bg-2);
+}
+.preview__stage--mobile .preview__frame {
+  width: 390px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
 }

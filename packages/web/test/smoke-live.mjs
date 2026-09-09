@@ -20,6 +20,7 @@ await page.goto("http://127.0.0.1:5273/");
 await page.getByPlaceholder("ws://127.0.0.1:7823?token=…").fill(url);
 await page.getByRole("button", { name: "연결" }).click();
 await page.waitForSelector(".planner", { timeout: 15000 });
+await page.getByRole("tab", { name: "디자인" }).click();
 await page.waitForTimeout(2500);
 
 // Either the repo is still syncing or it is ready; both are a healthy answer,

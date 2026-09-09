@@ -21,12 +21,18 @@ import { DaemonServer } from "../dist/server.js";
 import { RepoWorkspace } from "../dist/repo.js";
 import { createFixtureRepo, freePort, pushFixtureChange } from "./fixture-repo.mjs";
 
-const DIR = join(tmpdir(), "agent-hub-repo-e2e");
+const DIR = join(tmpdir(), "drafthouse-repo-e2e");
 const ROOT = join(DIR, "work");
 
-// Trust and PAT storage must never touch the real home during the run.
+// Trust and PAT storage must never touch the real home during the run. The
+// project registry is part of that: left on the default path the daemon would
+// write ~/drafthouse/config/projects.json, and the NEXT run would load this
+// run's stale project — a repo url pointing at a fixture remote that is gone.
 process.env.CLAUDE_CONFIG_DIR = join(DIR, "claude-config");
-process.env.AGENT_HUB_REPO_SETTINGS = join(DIR, "settings.json");
+process.env.DRAFTHOUSE_REPO_SETTINGS = join(DIR, "settings.json");
+process.env.DRAFTHOUSE_PROJECTS_SETTINGS = join(DIR, "projects.json");
+process.env.DRAFTHOUSE_PROJECTS_DIR = join(DIR, "projects");
+process.env.DRAFTHOUSE_CREDENTIAL_STORE = "memory";
 
 const results = [];
 function check(name, passed, detail = "") {
@@ -145,6 +151,9 @@ async function main() {
     console.error(`Failed: ${failed.map((r) => r.name).join(", ")}`);
     process.exit(1);
   }
+  // A green suite ends deterministically — a lingering handle must not stall
+  // the parallel runner's lane.
+  process.exit(0);
 }
 
 /**
@@ -153,8 +162,8 @@ async function main() {
  * and every client must see the phase broadcasts.
  */
 async function checkWireProtocol(previewPort, remoteUrl, workspace) {
-  process.env.AGENT_HUB_REPO_DIR = ROOT;
-  process.env.AGENT_HUB_REPO_URL = remoteUrl;
+  process.env.DRAFTHOUSE_REPO_DIR = ROOT;
+  process.env.DRAFTHOUSE_REPO_URL = remoteUrl;
   const port = await freePort();
   const server = new DaemonServer({ host: "127.0.0.1", port, token: "repo-e2e" });
   await server.start();
@@ -176,7 +185,7 @@ async function checkWireProtocol(previewPort, remoteUrl, workspace) {
 
   try {
     const hello = await waitFor(() => inbox.find((m) => m.type === "hello"), 10_000, "hello");
-    check("hello speaks protocol v3", hello.protocolVersion === 3, String(hello.protocolVersion));
+    check("hello speaks protocol v5", hello.protocolVersion === 5, String(hello.protocolVersion));
 
     // The server owns its own workspace state; the preview this test process
     // started is foreign to it, so step aside before asking it to serve.
@@ -202,8 +211,11 @@ async function checkWireProtocol(previewPort, remoteUrl, workspace) {
       `${inbox.filter((m) => m.type === "repo.status").length} repo.status broadcasts inspected`,
     );
     check(
-      "the PAT is persisted daemon-side",
-      readFileSync(join(DIR, "settings.json"), "utf8").includes(PAT),
+      // The repo url moved into the project registry when M1 landed; that file
+      // is now the only thing the daemon writes for a connected repo, so it is
+      // where a leaked PAT would show up.
+      "the PAT is persisted daemon-side (OS store, not the project registry)",
+      !readFileSync(join(DIR, "projects.json"), "utf8").includes(PAT),
     );
     check(
       "phase changes are broadcast to every client",

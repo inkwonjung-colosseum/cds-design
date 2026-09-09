@@ -10,12 +10,38 @@
  * exact same repo contract.
  */
 import { execFile } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
+
+/**
+ * A fake `claude` CLI for tests that must not touch the real login: answers
+ * --version and `auth status` (logged in, team plan) and exits for anything
+ * else. Point DRAFTHOUSE_CLAUDE_BIN at it.
+ */
+export function writeStubClaude(dir) {
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, "claude");
+  writeFileSync(
+    path,
+    [
+      "#!/bin/sh",
+      'case "$1" in',
+      '  --version) echo "1.0.0-stub"; exit 0;;',
+      "  auth)",
+      '    echo "{\\"loggedIn\\":true,\\"authMethod\\":\\"claude.ai\\",\\"subscriptionType\\":\\"team\\",\\"email\\":\\"planner@example.com\\"}"',
+      "    exit 0;;",
+      "esac",
+      "exit 0",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(path, 0o755);
+  return path;
+}
 
 /** A port nothing is listening on, for the fixture preview to declare. */
 export function freePort() {
@@ -56,6 +82,11 @@ const INDEX_HTML = `<!doctype html>
 </html>
 `;
 
+// The repo's own publish gate. The seed ships the passing version; a test
+// overwrites the clone's copy to make a publish fail on purpose.
+const CHECK_MJS = `console.log("check: 통과");
+`;
+
 const PACKAGE_JSON = JSON.stringify(
   {
     name: "fixture-drafthouse-app",
@@ -94,7 +125,15 @@ export async function createFixtureRepo({
   dir,
   port,
   previewCommand = "node server.mjs",
-  installCommand = "npm run install",
+  // `installUpToDate()` requires node_modules to exist, so the no-op install
+  // must create it — a real repo's install always does.
+  installCommand = "mkdir -p node_modules",
+  checkCommand = "node scripts/check.mjs",
+  // Replaces scripts/check.mjs entirely — security regressions use a check
+  // that passes while writing files the planner never reviewed.
+  checkMjs = CHECK_MJS,
+  // { host, scope } — a private-registry-declaring repo (npmrc leak checks).
+  registry = null,
 }) {
   const seed = join(dir, "seed");
   const remote = join(dir, "remote.git");
@@ -107,14 +146,17 @@ export async function createFixtureRepo({
     JSON.stringify(
       {
         install: installCommand,
-        check: "npm run check",
+        check: checkCommand,
         preview: { command: previewCommand, port },
+        ...(registry ? { registry } : {}),
       },
       null,
       2,
     ),
   );
   writeFileSync(join(seed, "package.json"), PACKAGE_JSON);
+  mkdirSync(join(seed, "scripts"), { recursive: true });
+  writeFileSync(join(seed, "scripts", "check.mjs"), checkMjs);
   writeFileSync(join(seed, "server.mjs"), SERVER_MJS);
   writeFileSync(join(seed, "index.html"), INDEX_HTML);
   writeFileSync(join(seed, "CLAUDE.md"), CLAUDE_MD);

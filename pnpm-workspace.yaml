@@ -3,4 +3,7 @@ packages:
 
 # Vite depends on esbuild, whose install script fetches the platform binary.
 allowBuilds:
+  electron: true
+  electron-builder: true
+  electron-winstaller: true
   esbuild: true

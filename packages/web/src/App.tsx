@@ -1,11 +1,23 @@
 import { useState } from "react";
 import { useDaemon } from "./daemon-client";
-import { Planner } from "./Planner";
+import { Shell } from "./Shell";
 import { SettingsDialog } from "./SettingsDialog";
 import { useSettings } from "./settings";
 import { GearIcon } from "./icons";
 
-const URL_KEY = "agent-hub.daemon-url";
+const URL_KEY = "drafthouse.daemon-url";
+
+/**
+ * The desktop app loads this page from the daemon itself with the pairing
+ * token in the query — no connect screen there. Browser users keep the
+ * manual flow; the token url is not persisted (it is per-run).
+ */
+function desktopDaemonUrl(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("token");
+  if (!token) return null;
+  return `ws://${window.location.host}?token=${encodeURIComponent(token)}`;
+}
 
 function ConnectScreen({
   onConnect,
@@ -40,7 +52,7 @@ function ConnectScreen({
       >
         <GearIcon size={15} />
       </button>
-      <h1>agent-hub</h1>
+      <h1>Drafthouse</h1>
       <p>
         이 컴퓨터에서 데몬을 켠 다음, 데몬이 출력한 주소를 붙여 넣어 주세요. 데몬은 이미 로그인해 둔
         Claude Code를 그대로 사용하므로, 본인 구독으로 실행됩니다.
@@ -86,7 +98,10 @@ function ConnectScreen({
 }
 
 export default function App() {
-  const [url, setUrl] = useState<string | null>(() => localStorage.getItem(URL_KEY));
+  const [url, setUrl] = useState<string | null>(
+    () => desktopDaemonUrl() ?? localStorage.getItem(URL_KEY),
+  );
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   // The planner view needs the whole connection, not a copy of each field.
   const daemon = useDaemon(url);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -113,6 +128,10 @@ export default function App() {
       status={daemon.status}
       connection={daemon.connection}
       daemon={daemon}
+      onOpenOnboarding={() => {
+        setOnboardingOpen(true);
+        setSettingsOpen(false);
+      }}
       onReconnect={connect}
       onForgetUrl={forgetUrl}
       onClose={() => setSettingsOpen(false)}
@@ -134,11 +153,14 @@ export default function App() {
 
   return (
     <>
-      <Planner
+      <Shell
         daemon={daemon}
         sendKey={settings.sendKey}
         confirmBeforeDelete={settings.confirmBeforeDelete}
         onOpenSettings={() => setSettingsOpen(true)}
+        onboardingOpen={onboardingOpen}
+        onOpenOnboarding={() => setOnboardingOpen(true)}
+        onOnboardingClose={() => setOnboardingOpen(false)}
       />
       {settingsDialog}
     </>

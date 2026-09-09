@@ -14,13 +14,10 @@ const stroke = {
   strokeLinejoin: "round" as const,
 };
 
-export function SendIcon({ size = 14 }: IconProps) {
+export function ArrowUpIcon({ size = 14 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M4 11.5 20 4l-7.5 16-2-6.5L4 11.5Z"
-        {...stroke}
-      />
+      <path d="M12 19V5m0 0-6 6m6-6 6 6" {...stroke} />
     </svg>
   );
 }
@@ -48,6 +45,30 @@ export function ChevronRightIcon({ size = 12 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
       <path d="m9 6 6 6-6 6" {...stroke} strokeWidth={2} />
+    </svg>
+  );
+}
+
+export function ChevronDownIcon({ size = 12 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" {...stroke} strokeWidth={2} />
+    </svg>
+  );
+}
+
+export function FileIcon({ size = 13 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Zm0 0v5h5" {...stroke} />
+    </svg>
+  );
+}
+
+export function FolderIcon({ size = 13 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" {...stroke} />
     </svg>
   );
 }

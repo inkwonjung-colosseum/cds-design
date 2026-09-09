@@ -2,9 +2,21 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DaemonServer } from "./server.js";
-import { HUB_DIR, buildStatus, childPath, resolveClaudeExecutable } from "./environment.js";
+import { CONFIG_DIR, buildStatus, childPath, resolveClaudeExecutable } from "./environment.js";
+import { createCredentialStore, loadConfluenceToken, loadRepoPat, migratePlaintextSecrets } from "./credentials.js";
+import { runOnboardingChecks } from "./onboarding.js";
+import { RepoWorkspace } from "./repo.js";
+import { ProjectRegistry } from "./projects.js";
+import { SyncEngine } from "./sync/sync-engine.js";
+import { ConfluenceClient } from "./sync/confluence-client.js";
+import { createConfluenceTransport, FetchTransport } from "./sync/fixture-transport.js";
+import {
+  confluenceCredentials,
+  loadConfluenceSettings,
+  confluenceConfigured,
+} from "./sync/confluence-settings.js";
 
-const CONFIG_FILE = join(HUB_DIR, "daemon.json");
+const CONFIG_FILE = join(CONFIG_DIR, "daemon.json");
 
 interface StoredConfig {
   host: string;
@@ -13,10 +25,10 @@ interface StoredConfig {
 }
 
 function loadConfig(): StoredConfig {
-  mkdirSync(HUB_DIR, { recursive: true });
+  mkdirSync(CONFIG_DIR, { recursive: true });
   // A second daemon on the same machine — an end-to-end suite while the user's
   // own daemon is running — needs a port of its own or it dies on bind.
-  const override = Number(process.env.AGENT_HUB_PORT);
+  const override = Number(process.env.DRAFTHOUSE_PORT);
   if (existsSync(CONFIG_FILE)) {
     try {
       const stored = JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as StoredConfig;
@@ -42,7 +54,43 @@ async function doctor(): Promise<number> {
     pendingPermissions: 0,
     registryProbeDir: null,
   });
-  console.log(JSON.stringify(status, null, 2));
+
+  // The onboarding checks are doctor's product surface (DESIGN §8, PLAN M1).
+  const credentials = createCredentialStore();
+  await migratePlaintextSecrets(credentials);
+  const transport = createConfluenceTransport();
+  const token = await loadConfluenceToken(credentials);
+  const clientFactory = () => {
+    const stored = confluenceCredentials(loadConfluenceSettings(), process.env, token);
+    if (!confluenceConfigured(stored)) return null;
+    return new ConfluenceClient(
+      { siteUrl: stored.siteUrl!, email: stored.email!, apiToken: stored.apiToken! },
+      transport.transport ?? new FetchTransport(stored.siteUrl!),
+    );
+  };
+
+  // Read-only: doctor reports, it never migrates a layout or clones anything.
+  // A machine with no project yet reports exactly that, which is the point.
+  const registry = ProjectRegistry.load();
+  const active = registry.active();
+  const paths = active ? registry.paths(active.slug) : null;
+  const onboarding = await runOnboardingChecks({
+    repo:
+      active && paths
+        ? new RepoWorkspace({
+            root: paths.repoRoot,
+            url: active.repo.url,
+            pat: await loadRepoPat(credentials, active.slug),
+            onStatus: () => undefined,
+          })
+        : null,
+    confluence: paths
+      ? new SyncEngine({ root: paths.mirrorRoot, clientFactory, onStatus: () => undefined })
+      : null,
+    projectName: active?.name ?? null,
+    confluenceClient: clientFactory,
+  });
+  console.log(JSON.stringify({ ...status, onboarding }, null, 2));
   if (status.warnings.length > 0) {
     console.error("\nProblems found:");
     for (const warning of status.warnings) console.error(`  - ${warning}`);
@@ -70,7 +118,7 @@ async function main(): Promise<void> {
   await server.start();
 
   const url = `ws://${config.host}:${config.port}?token=${config.token}`;
-  console.log(`agent-hub daemon listening on http://${config.host}:${config.port}`);
+  console.log(`drafthouse daemon listening on http://${config.host}:${config.port}`);
   console.log(`client url: ${url}`);
   console.log(`config: ${CONFIG_FILE}`);
 

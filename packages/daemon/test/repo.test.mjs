@@ -19,7 +19,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   authenticatedUrl,
+  extraPathPrefix,
   parseDrafthouseConfig,
+  parseUnifiedDiff,
   readDrafthouseConfig,
   saveSpecFiles,
   specFileName,
@@ -27,6 +29,8 @@ import {
   REPO_URL_MISSING_DETAIL,
   RepoWorkspace,
 } from "../dist/repo.js";
+import { MemoryCredentialStore, REPO_PAT_ITEM } from "../dist/credentials.js";
+import { repoPatItem } from "../dist/projects.js";
 import { detectsRegistryAuthFailure, pnpmCandidates } from "../dist/environment.js";
 import { createFixtureRepo, freePort } from "./fixture-repo.mjs";
 
@@ -198,19 +202,21 @@ test("a seeded repo walks cloning → installing → starting, and a dead previe
   }
 });
 
-test("changing the url discards the old clone and re-clones the new repo", async () => {
+test("changing the url discards the old clone, re-clones, and reports the move once", async () => {
   const dir = workdir("hub-repo-reclone-");
-  process.env.AGENT_HUB_REPO_SETTINGS = join(dir, "settings.json");
   process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
   try {
     const port = await freePort();
     const first = await createFixtureRepo({ dir: join(dir, "a"), port });
     const second = await createFixtureRepo({ dir: join(dir, "b"), port });
 
+    // What the project registry hears; nothing else persists the url now.
+    const moves = [];
     const workspace = new RepoWorkspace({
       root: join(dir, "work"),
       url: first.remote,
       onStatus: () => undefined,
+      onUrlChange: (url) => moves.push(url),
     });
     assert.equal((await workspace.sync()).phase, "ready");
     const marker = join(dir, "work", "sentinel-from-first-repo.txt");
@@ -221,17 +227,184 @@ test("changing the url discards the old clone and re-clones the new repo", async
     assert.equal(moved.url, second.remote);
     assert.throws(() => readFileSync(marker), /ENOENT/, "the old clone must be discarded, not merged");
     assert.ok(existsSync(join(dir, "work", ".git")), "the new clone is in place");
-    assert.equal(
-      JSON.parse(readFileSync(join(dir, "settings.json"), "utf8")).url,
-      second.remote,
-      "the moved url is persisted",
-    );
+    assert.deepEqual(moves, [second.remote], "the move is reported with the new url");
+
+    // Re-submitting the same url is not a move: the registry must not be told
+    // to rewrite (and broadcast) a project nothing changed about.
+    await workspace.update({ url: second.remote });
+    assert.deepEqual(moves, [second.remote]);
     await workspace.stop();
   } finally {
-    delete process.env.AGENT_HUB_REPO_SETTINGS;
     delete process.env.CLAUDE_CONFIG_DIR;
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("a PAT saved through update() lands under the owning project's item", async () => {
+  const store = new MemoryCredentialStore();
+  // No url: update() settles in `missing` without cloning, which is all this
+  // check needs — where the secret is filed, not what git does with it.
+  const alpha = new RepoWorkspace({
+    root: join(workdir("hub-repo-pat-alpha-"), "work"),
+    url: null,
+    store,
+    patItem: repoPatItem("alpha"),
+    onStatus: () => undefined,
+  });
+  const beta = new RepoWorkspace({
+    root: join(workdir("hub-repo-pat-beta-"), "work"),
+    url: null,
+    store,
+    patItem: repoPatItem("beta"),
+    onStatus: () => undefined,
+  });
+
+  await alpha.update({ pat: "ghp_alpha" });
+  await beta.update({ pat: "ghp_beta" });
+  assert.equal(await store.load(repoPatItem("alpha")), "ghp_alpha");
+  assert.equal(await store.load(repoPatItem("beta")), "ghp_beta", "a second project never overwrites the first");
+  assert.equal(await store.load(REPO_PAT_ITEM), null, "the pre-projects item is left alone");
+
+  await alpha.update({ pat: null });
+  assert.equal(await store.load(repoPatItem("alpha")), null, "clearing removes only that project's PAT");
+  assert.equal(await store.load(repoPatItem("beta")), "ghp_beta");
+});
+
+// ---------------------------------------------------------------------------
+// Unified diff parsing
+// ---------------------------------------------------------------------------
+
+test("a new file parses as added with its content lines", () => {
+  const files = parseUnifiedDiff(
+    [
+      "diff --git a/src/screens/member/MemberList.screen.tsx b/src/screens/member/MemberList.screen.tsx",
+      "new file mode 100644",
+      "index 0000000..1111111",
+      "--- /dev/null",
+      "+++ b/src/screens/member/MemberList.screen.tsx",
+      "@@ -0,0 +1,2 @@",
+      "+export const meta = { title: \"회원 목록\" };",
+      "+export default function MemberListScreen() { return null; }",
+    ].join("\n"),
+  );
+  assert.equal(files.length, 1);
+  assert.equal(files[0].path, "src/screens/member/MemberList.screen.tsx");
+  assert.equal(files[0].status, "added");
+  assert.equal(files[0].hunks.length, 1);
+  assert.equal(files[0].hunks[0].header, "@@ -0,0 +1,2 @@");
+  assert.deepEqual(files[0].hunks[0].lines, [
+    '+export const meta = { title: "회원 목록" };',
+    "+export default function MemberListScreen() { return null; }",
+  ]);
+});
+
+test("a deleted file keeps its removal hunk", () => {
+  const files = parseUnifiedDiff(
+    [
+      "diff --git a/old.txt b/old.txt",
+      "deleted file mode 100644",
+      "index 1111111..0000000",
+      "--- a/old.txt",
+      "+++ /dev/null",
+      "@@ -1,1 +0,0 @@",
+      "-이전 내용",
+    ].join("\n"),
+  );
+  assert.equal(files[0].status, "deleted");
+  assert.equal(files[0].path, "old.txt");
+  assert.deepEqual(files[0].hunks[0].lines, ["-이전 내용"]);
+});
+
+test("a modified file keeps hunk order and every context line", () => {
+  const files = parseUnifiedDiff(
+    [
+      "diff --git a/index.html b/index.html",
+      "index 2222222..3333333 100644",
+      "--- a/index.html",
+      "+++ b/index.html",
+      "@@ -1,4 +1,4 @@",
+      " <head>",
+      "-<title>old</title>",
+      "+<title>회원 관리</title>",
+      " </head>",
+      "@@ -10,3 +10,4 @@",
+      " <body>",
+      "+  <p>추가</p>",
+      " </body>",
+    ].join("\n"),
+  );
+  assert.equal(files[0].status, "modified");
+  assert.equal(files[0].hunks.length, 2);
+  assert.equal(files[0].hunks[0].header, "@@ -1,4 +1,4 @@");
+  assert.deepEqual(files[0].hunks[0].lines, [
+    " <head>",
+      "-<title>old</title>",
+      "+<title>회원 관리</title>",
+      " </head>",
+  ]);
+  assert.deepEqual(files[0].hunks[1].lines, [" <body>", "+  <p>추가</p>", " </body>"]);
+});
+
+test("the no-newline marker stays with its hunk", () => {
+  const files = parseUnifiedDiff(
+    [
+      "diff --git a/a.txt b/a.txt",
+      "--- a/a.txt",
+      "+++ b/a.txt",
+      "@@ -1 +1 @@",
+      "-한 줄",
+      "+다른 줄",
+      "\\ No newline at end of file",
+    ].join("\n"),
+  );
+  assert.deepEqual(files[0].hunks[0].lines, ["-한 줄", "+다른 줄", "\\ No newline at end of file"]);
+});
+
+test("a binary file is marked and carries no hunks", () => {
+  const files = parseUnifiedDiff(
+    [
+      "diff --git a/logo.png b/logo.png",
+      "index 4444444..5555555 100644",
+      "Binary files a/logo.png and b/logo.png differ",
+    ].join("\n"),
+  );
+  assert.equal(files[0].binary, true);
+  assert.deepEqual(files[0].hunks, []);
+  assert.equal(files[0].path, "logo.png");
+});
+
+test("a rename reports the new path and no phantom trailing line", () => {
+  const output = [
+    "diff --git a/src/screens/old/X.screen.tsx b/src/screens/member/X.screen.tsx",
+    "similarity index 100%",
+    "rename from src/screens/old/X.screen.tsx",
+    "rename to src/screens/member/X.screen.tsx",
+  ].join("\n");
+  const files = parseUnifiedDiff(`${output}\n`);
+  assert.equal(files.length, 1);
+  assert.equal(files[0].status, "renamed");
+  assert.equal(files[0].path, "src/screens/member/X.screen.tsx");
+  assert.deepEqual(files[0].hunks, []);
+});
+
+// ---------------------------------------------------------------------------
+// Bundled-runtime PATH prefix (desktop app)
+// ---------------------------------------------------------------------------
+
+test("DRAFTHOUSE_EXTRA_PATH is prepended to PATH, deduplicated, on both separators", () => {
+  const env = { PATH: "/usr/bin:/bin:/usr/local/bin" };
+  assert.equal(
+    extraPathPrefix("/Applications/Drafthouse.app/Contents/Resources/bin", env),
+    ["/Applications/Drafthouse.app/Contents/Resources/bin", "/usr/bin", "/bin", "/usr/local/bin"].join(":"),
+    "the bundled runtime wins over whatever the machine has",
+  );
+  assert.equal(extraPathPrefix("/usr/bin", env), "/usr/bin:/bin:/usr/local/bin", "no duplicates");
+  assert.equal(extraPathPrefix(undefined, env), env.PATH, "browser/daemon path is untouched");
+  assert.equal(
+    extraPathPrefix("C:\\Apps\\bin", { PATH: "C:\\Windows" }, "win32"),
+    "C:\\Apps\\bin;C:\\Windows",
+    "windows separator",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -416,3 +589,139 @@ test("trust survives a missing config and never rewrites a corrupt one", () => {
   rmSync(fresh, { recursive: true, force: true });
   rmSync(broken, { recursive: true, force: true });
 });
+
+
+// ---------------------------------------------------------------------------
+// Publish regressions (B1, F4, F5)
+// ---------------------------------------------------------------------------
+
+/** A fixture whose check passes while writing a file nobody reviewed. */
+const SNEAKY_CHECK = `import { writeFileSync } from "node:fs";
+writeFileSync("sneaky-unreviewed.txt", "the gate wrote this");
+console.log("check: 통과");
+`;
+
+/** A local-registry fixture + a PAT, for the npmrc-leak checks. */
+async function registryFixture(dir, home) {
+  const fixture = await createFixtureRepo({
+    dir: join(dir, "fixture"),
+    port: await freePort(),
+    previewCommand: 'node -e "process.exit(0)"',
+    checkMjs: SNEAKY_CHECK,
+    registry: { host: "npm.pkg.github.test", scope: "@leaktest" },
+  });
+  const npmrc = join(home, ".npmrc");
+  process.env.DRAFTHOUSE_NPMRC = npmrc;
+  writeFileSync(npmrc, "registry=https://registry.npmjs.org/\n");
+  return { fixture, npmrc };
+}
+
+test("B1: a registry repo saves with no .npmrc and no PAT — creds stay user-level", async () => {
+  const dir = workdir("hub-publish-npmrc-");
+  const home = join(dir, "home");
+  mkdirSync(home, { recursive: true });
+  try {
+    const { fixture, npmrc } = await registryFixture(dir, home);
+    const workspace = new RepoWorkspace({
+      root: join(dir, "work"),
+      url: fixture.remote,
+      pat: "ghp_npmrc_leak_probe",
+      onStatus: () => undefined,
+    });
+    await workspace.sync(); // install runs (fresh clone) → registry merge lands user-level
+    await workspace.stop();
+
+    assert.ok(!existsSync(join(dir, "work", ".npmrc")), "the clone must not carry an npmrc");
+    const user = readFileSync(npmrc, "utf8");
+    assert.ok(user.includes("@leaktest:registry=https://npm.pkg.github.test/"), "scope mapping merged");
+    assert.ok(user.includes("//npm.pkg.github.test/:_authToken=ghp_npmrc_leak_probe"), "token merged user-level");
+    assert.ok(user.includes("registry=https://registry.npmjs.org/"), "existing lines survive the merge");
+
+    writeFileSync(join(dir, "work", "index.html"), "<p>게시 검증</p>\n");
+    const published = await workspace.save({ message: "npmrc 누출 검증" });
+    assert.equal(published.stage, "published", published.detail ?? "");
+
+    const tree = await promisifiedRun("git", ["-C", fixture.remote, "ls-tree", "-r", "--name-only", "HEAD"]);
+    assert.ok(!tree.split("\n").includes(".npmrc"), "the pushed tree has no .npmrc");
+    assert.ok(!tree.includes("ghp_npmrc_leak_probe"), "the pushed tree has no PAT");
+    const localTree = await promisifiedRun("git", ["-C", join(dir, "work"), "ls-tree", "-r", "--name-only", "HEAD"]);
+    assert.ok(!localTree.split("\n").includes(".npmrc"));
+  } finally {
+    delete process.env.DRAFTHOUSE_NPMRC;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("F4: a save commits exactly the reviewed paths — gate-written files stay out", async () => {
+  const dir = workdir("hub-publish-sneaky-");
+  try {
+    const fixture = await createFixtureRepo({
+      dir: join(dir, "fixture"),
+      port: await freePort(),
+      previewCommand: 'node -e "process.exit(0)"',
+      checkMjs: SNEAKY_CHECK,
+    });
+    const workspace = new RepoWorkspace({
+      root: join(dir, "work"),
+      url: fixture.remote,
+      onStatus: () => undefined,
+    });
+    await workspace.sync();
+    await workspace.stop();
+
+    // The reviewed change: an edit the planner saw in the diff panel.
+    writeFileSync(join(dir, "work", "index.html"), "<p>검토된 변경</p>\n");
+    const published = await workspace.save({ message: "검토된 것만" });
+    assert.equal(published.stage, "published", published.detail ?? "");
+
+    const committed = (await promisifiedRun("git", ["-C", join(dir, "work"), "show", "--name-only", "--pretty=", "HEAD"]))
+      .split("\n")
+      .filter(Boolean);
+    assert.ok(committed.includes("index.html"), `index.html committed: ${committed.join(", ")}`);
+    assert.ok(!committed.includes("sneaky-unreviewed.txt"), "the gate's unreviewed file must not be committed");
+    assert.ok(existsSync(join(dir, "work", "sneaky-unreviewed.txt")), "the gate still ran (its file exists on disk)");
+    const status = await promisifiedRun("git", ["-C", join(dir, "work"), "status", "--porcelain"]);
+    assert.match(status, /sneaky-unreviewed\.txt/, "it remains untracked, awaiting its own review");
+
+    const remoteTree = await promisifiedRun("git", ["-C", fixture.remote, "ls-tree", "-r", "--name-only", "HEAD"]);
+    assert.ok(!remoteTree.includes("sneaky-unreviewed.txt"), "the remote is clean too");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("F5: a save re-reads drafthouse.json — a freshly edited gate is the one that runs", async () => {
+  const dir = workdir("hub-publish-config-");
+  try {
+    const fixture = await createFixtureRepo({
+      dir: join(dir, "fixture"),
+      port: await freePort(),
+      previewCommand: 'node -e "process.exit(0)"',
+    });
+    const workspace = new RepoWorkspace({
+      root: join(dir, "work"),
+      url: fixture.remote,
+      onStatus: () => undefined,
+    });
+    await workspace.sync();
+    await workspace.stop();
+
+    // Swap the clone's gate AFTER sync cached the config: publish must run
+    // what is on disk now, not the cached copy.
+    const drafthouse = JSON.parse(readFileSync(join(dir, "work", "drafthouse.json"), "utf8"));
+    drafthouse.check = "node -e \"console.error('NEWGATE-RAN'); process.exit(7)\"";
+    writeFileSync(join(dir, "work", "drafthouse.json"), `${JSON.stringify(drafthouse, null, 2)}\n`);
+
+    writeFileSync(join(dir, "work", "index.html"), "<p>게이트 확인</p>\n");
+    const status = await workspace.save({ message: "게이트" });
+    assert.equal(status.stage, "failed");
+    assert.equal(status.gate, "check");
+    assert.ok((status.detail ?? "").includes("NEWGATE-RAN"), `the new gate ran: ${status.detail ?? ""}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+import { execFile as execFileCb } from "node:child_process";
+import { promisify } from "node:util";
+const promisifiedRun = async (command, args) => (await promisify(execFileCb)(command, args)).stdout;
