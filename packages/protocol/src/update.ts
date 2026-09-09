@@ -9,10 +9,11 @@
 
 // 릴리스 저장소("owner/repo"). GitHub Releases 가 곧 배포 채널이다(DESIGN §7
 // 의 별도 releases 레포 대신 이 레포의 릴리스 페이지에 설치 파일을 올린다).
-// ⚠️ GitHub 에 푸시한 뒤 이 값을 실제 주소로 바꿔야 업데이트 확인이 동작한다.
-// 무인증 fetch 라 private repo 릴리스는 403/404 다 — 소스가 private 여도
-// 설치 파일은 공개 상태여야 한다.
-export const RELEASES_REPO = "OWNER/REPO";
+//
+// 확인 요청은 무인증 fetch 다 — 소스가 private 여도 상관없지만 **설치 파일을
+// 올린 릴리스는 공개**여야 읽힌다. 아직 공개 릴리스가 없으면 피드는 404 이고,
+// 그건 고장이 아니라 "아직 배포한 적 없음"이라 아래에서 그렇게 말한다.
+export const RELEASES_REPO = "inkwonjung-colosseum/cds-open-design";
 export const RELEASES_FEED_URL = `https://github.com/${RELEASES_REPO}/releases/latest/download/latest.json`;
 
 export interface LatestFeed {
@@ -56,7 +57,13 @@ export function compareSemver(a: string, b: string): -1 | 0 | 1 {
 export async function fetchLatest(feedUrl: string, fetchLike: FetchLike): Promise<LatestFeed> {
   const response = await fetchLike(feedUrl);
   if (!response.ok) {
-    throw new Error(`업데이트 정보를 가져오지 못했습니다 (exit ${response.status})`);
+    // 404/403 은 이 피드의 정상적인 "아직 없음" 모양이다: 자격 증명을 싣지
+    // 않으므로 비공개 릴리스와 한 번도 올리지 않은 레포가 구분되지 않는다.
+    // 일시적 네트워크 실패처럼 보이면 사람이 영원히 다시 누른다.
+    if (response.status === 404 || response.status === 403) {
+      throw new Error("아직 공개된 릴리스가 없습니다 — 설치 파일이 공개된 뒤에 확인할 수 있습니다");
+    }
+    throw new Error(`업데이트 정보를 가져오지 못했습니다 (HTTP ${response.status})`);
   }
   const parsed = response.json as Record<string, unknown> | undefined;
   if (!parsed || typeof parsed.version !== "string") {

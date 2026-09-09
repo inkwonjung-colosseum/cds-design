@@ -298,10 +298,11 @@ git push origin v0.1.0
 - 에셋 이름은 `electron-builder.yml` 의 `artifactName` 에 고정돼 있고,
   `latest.json`(`version`/`notes`/`sha256`/`url`)은 앱의 업데이트 확인이
   읽는 피드다(mac zip sha256 = 자가 교체 검증값).
-- **repo 를 GitHub 에 만든 뒤** `packages/protocol/src/update.ts` 의
-  `RELEASES_REPO = "OWNER/REPO"` 를 실제 주소로 바꿔야 앱의 업데이트 확인이
-  동작한다(무인증 fetch 라 private repo 릴리스는 읽히지 않는다 — 설치 파일을
-  공개 상태로 두려면 공개 릴리스 채널이 필요하다).
+- `RELEASES_REPO`(`packages/protocol/src/update.ts`)는
+  `inkwonjung-colosseum/cds-open-design` 을 가리킨다. 확인 요청은 무인증
+  fetch 라 **소스가 private 인 것은 상관없지만 설치 파일을 올린 릴리스는
+  공개**여야 읽힌다. 공개 릴리스가 아직 없는 동안 확인 버튼은 "아직 공개된
+  릴리스가 없습니다"라고 답한다 — 고장이 아니라 배포 전 상태다.
 - 미서명 배포: macOS 는 첫 실행을 우클릭 → 열기, Windows 는 SmartScreen
   추가 정보 → 실행. 이 안내는 워크플로우가 릴리스 노트에 자동으로 넣는다.
 

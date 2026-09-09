@@ -67,15 +67,28 @@ test("checkForUpdate reads the feed and compares against the current version", a
 });
 
 test("feed errors are Korean and shaped for the settings row", async () => {
+  // "No public release yet" is the normal state of this feed while the source
+  // is private, and it must not read as a network hiccup the planner retries.
+  for (const status of [404, 403]) {
+    await assert.rejects(
+      () => fetchLatest("https://x", async () => ({ ok: false, status })),
+      /아직 공개된 릴리스가 없습니다/,
+      `status ${status}`,
+    );
+  }
+  // Anything else is a real failure and says so with the status, as a status.
   await assert.rejects(
-    () => fetchLatest("https://x", async () => ({ ok: false, status: 404 })),
-    /업데이트 정보를 가져오지 못했습니다 \(exit 404\)/,
+    () => fetchLatest("https://x", async () => ({ ok: false, status: 500 })),
+    /업데이트 정보를 가져오지 못했습니다 \(HTTP 500\)/,
   );
   await assert.rejects(
     () => fetchLatest("https://x", async () => ({ ok: true, status: 200, json: { nope: 1 } })),
     /업데이트 정보 형식이 올바르지 않습니다/,
   );
+  // The constant has to name a real repo, or the feed is a placeholder that
+  // 404s forever and the failure above lies about why.
   assert.match(RELEASES_FEED_URL, /latest\.json$/);
+  assert.ok(!RELEASES_FEED_URL.includes("OWNER/REPO"), RELEASES_FEED_URL);
 });
 
 test("the check flow works against a real local feed server", async () => {
