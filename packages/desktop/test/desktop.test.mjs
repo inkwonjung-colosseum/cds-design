@@ -1,8 +1,9 @@
 /**
  * Desktop unit checks — update logic (version compare, feed parse, sha256
- * verify, plan), the safeStorage store against a fake, and the daemon-side
- * PATH prefix. Everything runs offline; the update feed is a local fixture
- * server, the sha256 fixtures are real files.
+ * verify, plan), the notice copy the OS notification paints, the safeStorage
+ * store against a fake, and the daemon-side PATH prefix. Everything runs
+ * offline; the update feed is a local fixture server, the sha256 fixtures are
+ * real files.
  *
  * Run: node --test packages/desktop/test/desktop.test.mjs
  */
@@ -25,6 +26,7 @@ import {
   verifyDownload,
 } from "../dist/mac-self-update.js";
 import { SafeStorageCredentialStore } from "../dist/safe-storage-store.js";
+import { noticeCopy } from "../dist/notices.js";
 import { extraPathPrefix } from "../../daemon/dist/repo.js";
 
 function workdir(prefix) {
@@ -181,8 +183,8 @@ test("the safeStorage store round-trips, replaces, deletes — never plaintext o
     await store.save("pat", "ghp_desktop_secret");
     assert.equal(await store.load("pat"), "ghp_desktop_secret");
 
-    await store.save("confluence-token", "tok_desktop");
-    assert.equal(await store.load("confluence-token"), "tok_desktop");
+    await store.save("second-token", "tok_desktop");
+    assert.equal(await store.load("second-token"), "tok_desktop");
 
     const onDisk = readFileSync(file, "utf8");
     assert.ok(!onDisk.includes("ghp_desktop_secret"), "the secret never lands in plaintext");
@@ -194,7 +196,7 @@ test("the safeStorage store round-trips, replaces, deletes — never plaintext o
 
     await store.delete("pat");
     assert.equal(await store.load("pat"), null);
-    assert.equal(await store.load("confluence-token"), "tok_desktop", "sibling secrets survive");
+    assert.equal(await store.load("second-token"), "tok_desktop", "sibling secrets survive");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -247,4 +249,51 @@ test("CDS_DESIGN_EXTRA_PATH is prepended to PATH without duplicates", () => {
     extraPathPrefix("C:\\Apps\\CDS Design\\resources\\bin", win, "win32"),
     ["C:\\Apps\\CDS Design\\resources\\bin", "C:\\Windows", "C:\\Program Files\\nodejs"].join(";"),
   );
+});
+
+// ---------------------------------------------------------------------------
+// notice copy — what the desktop paints as an OS notification
+// ---------------------------------------------------------------------------
+
+test("notice copy speaks the planner's words, never the daemon's", () => {
+  // 턴이 끝났을 때 — 돌아와서 미리보기를 보면 된다.
+  const done = noticeCopy({ kind: "done", sessionId: "s1", title: "로그인 화면" });
+  assert.equal(done.title, "로그인 화면 · 완료");
+  assert.ok(done.body.includes("미리보기"));
+
+  // Claude 가 답을 기다릴 때 — 허락 카드와 질문 카드는 다른 문장이다.
+  const permission = noticeCopy({
+    kind: "ask",
+    sessionId: "s1",
+    title: "로그인 화면",
+    what: "permission",
+  });
+  assert.equal(permission.title, "로그인 화면 · 확인 필요");
+  assert.ok(permission.body.includes("허락"));
+  const question = noticeCopy({
+    kind: "ask",
+    sessionId: "s1",
+    title: "로그인 화면",
+    what: "question",
+  });
+  assert.equal(question.title, "로그인 화면 · 답 필요");
+
+  // 게이트 실패 — 저장과 넘기기가 버튼 이름 그대로 나온다.
+  const save = noticeCopy({ kind: "gate", sessionId: "s1", title: "회원 목록", stage: "save" });
+  assert.equal(save.title, "회원 목록 · 저장 실패");
+  const handoff = noticeCopy({
+    kind: "gate",
+    sessionId: "s1",
+    title: "회원 목록",
+    stage: "handoff",
+  });
+  assert.equal(handoff.title, "회원 목록 · 넘기기 실패");
+
+  const crashed = noticeCopy({ kind: "crashed", sessionId: "s1", title: "로그인 화면" });
+  assert.equal(crashed.title, "로그인 화면 · 중단");
+
+  // 어휘 계약: git 명사와 도구 이름은 어떤 문구에도 나오지 않는다.
+  for (const n of [done, permission, question, save, handoff, crashed]) {
+    assert.doesNotMatch(`${n.title} ${n.body}`, /git|branch|commit|push|pull|PR|Bash|Write|Edit/);
+  }
 });

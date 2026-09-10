@@ -185,7 +185,7 @@ async function checkWireProtocol(previewPort, remoteUrl, workspace) {
 
   try {
     const hello = await waitFor(() => inbox.find((m) => m.type === "hello"), 10_000, "hello");
-    check("hello speaks protocol v5", hello.protocolVersion === 5, String(hello.protocolVersion));
+    check("hello speaks protocol v9", hello.protocolVersion === 9, String(hello.protocolVersion));
 
     // The server owns its own workspace state; the preview this test process
     // started is foreign to it, so step aside before asking it to serve.
@@ -198,12 +198,14 @@ async function checkWireProtocol(previewPort, remoteUrl, workspace) {
       `${before.data.phase}, url=${before.data.url}`,
     );
 
+    // PAT storage went machine-wide (github.token.set); a repo.update that
+    // still carries one has the field stripped by the protocol, not stored.
     const PAT = "ghp_repo_e2e_secret";
     const updated = await request({ id: "2", type: "repo.update", pat: PAT });
     check(
-      "repo.update settles the workspace and reports PAT presence only",
-      updated.data.phase === "ready" && updated.data.patConfigured === true,
-      `${updated.data.phase}${updated.data.detail ? `: ${updated.data.detail}` : ""}`,
+      "repo.update ignores a stray pat field and reports no per-project PAT",
+      updated.data.phase === "ready" && !("patConfigured" in updated.data),
+      `${updated.data.phase}`,
     );
     check(
       "the PAT never crosses the wire back",
@@ -214,7 +216,7 @@ async function checkWireProtocol(previewPort, remoteUrl, workspace) {
       // The repo url moved into the project registry when M1 landed; that file
       // is now the only thing the daemon writes for a connected repo, so it is
       // where a leaked PAT would show up.
-      "the PAT is persisted daemon-side (OS store, not the project registry)",
+      "the PAT is not persisted anywhere in the project registry",
       !readFileSync(join(DIR, "projects.json"), "utf8").includes(PAT),
     );
     check(

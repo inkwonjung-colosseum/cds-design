@@ -108,7 +108,7 @@ async function main() {
 
   // 1. hello + status
   const hello = await waitFor((m) => m.type === "hello", 10000, "hello", inbox);
-  check("hello carries daemon status", hello.status.protocolVersion === 5);
+  check("hello carries daemon status", hello.status.protocolVersion === 8);
   check(
     "signed in with a subscription, not an API key",
     hello.status.loggedIn === true &&
@@ -122,8 +122,8 @@ async function main() {
   const blocking = hello.status.warnings.filter((w) => !w.includes("@colosseumcoinckr/cds"));
   check("no warnings that would stop a session", blocking.length === 0, blocking.join("; "));
 
-  // 2. session creation — the client names the workspace, the daemon owns the cwd
-  const created = await call({ type: "session.create", workspace: "design" });
+  // 2. session creation — the daemon owns the cwd: the active project's clone
+  const created = await call({ type: "session.create" });
   const sessionId = created.sessionId;
   check("session.create returns an id up front", /^[0-9a-f-]{36}$/.test(sessionId), sessionId);
 
@@ -245,18 +245,11 @@ async function main() {
     JSON.stringify((secondTurn.event.resultText ?? "").slice(0, 60)),
   );
 
-  // 6. listing merges live and on-disk sessions, per workspace
-  const listed = await call({ type: "session.list", workspace: "design" });
+  // 6. listing merges live and on-disk sessions for the active project
+  const listed = await call({ type: "session.list" });
   const mine = listed.find((s) => s.sessionId === sessionId);
   check("session.list includes the live session", Boolean(mine?.live), `state=${mine?.state}`);
   check("session title derived from the first prompt", Boolean(mine?.title && mine.title !== "새 화면"));
-  check("the summary names its workspace", mine?.workspace === "design", mine?.workspace);
-  const planning = await call({ type: "session.list", workspace: "planning" });
-  check(
-    "the planning workspace does not see the design thread",
-    !planning.some((s) => s.sessionId === sessionId),
-    `${planning.length} planning session(s)`,
-  );
 
   // 7. teardown
   await call({ type: "session.close", sessionId });

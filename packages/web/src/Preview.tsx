@@ -7,6 +7,7 @@ import type {
   CdsDesignScreensRequestEnvelope,
 } from "@cds-design/protocol";
 import { stateLabel } from "./format";
+import { DesktopIcon, ExternalLinkIcon, MobileIcon, RestartIcon } from "./icons";
 
 /** Which screen, in which state, the planner asked to see. */
 export interface PreviewTarget {
@@ -24,6 +25,28 @@ export interface PreviewTarget {
  * only works wide breaks at all of them, so a second one buys nothing.
  */
 type PreviewWidth = "mobile" | "desktop";
+
+/**
+ * The picker's groups: screens bucketed by the feature their routes name
+ * (`/member/MemberList` → `member`, a bare route under no group at all), the
+ * planner's own features first and the repo's reference material — the
+ * `_example` teaching folder a connected repo ships for its own rules —
+ * last. The screen rail's old grouping, kept where the picking happens.
+ */
+function groupedScreens(screens: CdsDesignScreen[]): [string, CdsDesignScreen[]][] {
+  const byFeature = new Map<string, CdsDesignScreen[]>();
+  for (const screen of screens) {
+    const segments = screen.route.split("/").filter(Boolean);
+    const feature = segments.length > 1 ? (segments[0] ?? "") : "";
+    const bucket = byFeature.get(feature) ?? [];
+    bucket.push(screen);
+    byFeature.set(feature, bucket);
+  }
+  const isReference = (feature: string) => feature.startsWith("_") || feature === "example";
+  return [...byFeature.entries()].sort(
+    ([a], [b]) => Number(isReference(a)) - Number(isReference(b)) || a.localeCompare(b),
+  );
+}
 
 /**
  * The preview pane: the connected repo's own preview server, framed as-is.
@@ -123,6 +146,7 @@ export function Preview({
           <h2>미리보기 서버 중단</h2>
           <p className="hint">{stoppedDetail || "화면을 그리는 서버가 멈췄습니다."} 대화 내용은 그대로입니다.</p>
           <button type="button" className="primary" onClick={onRestart}>
+            <RestartIcon />
             다시 시작
           </button>
         </div>
@@ -152,7 +176,9 @@ export function Preview({
       <div className="preview__toolbar">
         {/* The repo declares its screens or it does not; there is no empty
             picker, because an empty dropdown reads as "this repo has no
-            screens" when the truth is usually "the app has not loaded yet". */}
+            screens" when the truth is usually "the app has not loaded yet".
+            This select is the screens' only door, so it carries the rail's
+            old grouping: the planner's features lead, reference sinks. */}
         {screens.length > 0 && (
           <select
             className="preview__screens"
@@ -165,11 +191,23 @@ export function Preview({
                 화면 선택
               </option>
             )}
-            {screens.map((screen) => (
-              <option key={screen.route} value={screen.route}>
-                {screen.title}
-              </option>
-            ))}
+            {groupedScreens(screens).map(([feature, groupScreens]) =>
+              feature ? (
+                <optgroup key={feature} label={feature}>
+                  {groupScreens.map((screen) => (
+                    <option key={screen.route} value={screen.route}>
+                      {screen.title}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                groupScreens.map((screen) => (
+                  <option key={screen.route} value={screen.route}>
+                    {screen.title}
+                  </option>
+                ))
+              ),
+            )}
           </select>
         )}
         {/* A screen with one state has nothing to switch between, so a lone
@@ -201,6 +239,7 @@ export function Preview({
             title="휴대폰 폭으로 좁혀서 봅니다"
             onClick={() => setWidth("mobile")}
           >
+            <MobileIcon />
             모바일
           </button>
           <button
@@ -210,10 +249,12 @@ export function Preview({
             title="화면 전체 폭으로 봅니다"
             onClick={() => setWidth("desktop")}
           >
+            <DesktopIcon />
             데스크톱
           </button>
         </div>
         <a className="preview__link" href={url} target="_blank" rel="noreferrer">
+          <ExternalLinkIcon />
           새 창
         </a>
       </div>

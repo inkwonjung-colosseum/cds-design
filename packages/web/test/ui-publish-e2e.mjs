@@ -60,18 +60,13 @@ async function cycleBranch(remote) {
   const { stdout } = await run("git", ["--git-dir", remote, "for-each-ref", "--format=%(refname:short)", "refs/heads"]);
   return stdout.split("\n").map((line) => line.trim()).find((name) => name.startsWith("cds-design/")) ?? null;
 }
-
-
 /**
- * Every cycle action lives in 더 보기 whatever the stepper is suggesting
- * (PLAN D8) — the rail is advice, not a gate. This suite has no 기획서 open,
- * so the stepper has no primary to press and the menu is the only way in.
+ * Every cycle action lives in the panel's own action bar (PLAN D4) — one
+ * 저장 button, one 넘기기 button, no menu to hunt through.
  */
-async function viaMenu(page, label) {
-  await page.getByRole("button", { name: "더 보기" }).click();
-  await page.getByRole("menuitem", { name: label }).click();
+async function viaActionBar(page, label) {
+  await page.locator(".screenpanel__bar").getByRole("button", { name: label }).click();
 }
-
 async function main() {
   if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @cds-design/web build");
   if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @cds-design/daemon build");
@@ -88,25 +83,13 @@ async function main() {
     CDS_DESIGN_REPO_DIR: WORK_ROOT,
     CDS_DESIGN_REPO_URL: fixture.remote,
     CDS_DESIGN_REPO_SETTINGS: join(DIR, "settings.json"),
-    // The registry is what decides which repo and mirror the daemon means, so
-    // it lives in the throwaway directory too — left on its default this suite
-    // would write (and migrate) the developer's own ~/cds-design.
+    // The registry is what decides which repo the daemon means, so it lives
+    // in the throwaway directory too — left on its default this suite would
+    // write the developer's own ~/cds-design.
     CDS_DESIGN_PROJECTS_SETTINGS: join(DIR, "projects.json"),
     CDS_DESIGN_PROJECTS_DIR: join(DIR, "projects"),
     CLAUDE_CONFIG_DIR: join(DIR, "claude-config"),
     CDS_DESIGN_CLAUDE_BIN: writeStubClaude(join(DIR, "bin")),
-    CDS_DESIGN_CONFLUENCE_SITE: "https://example.atlassian.net",
-    CDS_DESIGN_CONFLUENCE_EMAIL: "dev@example.com",
-    CDS_DESIGN_CONFLUENCE_TOKEN: "publish-ui-token",
-    CDS_DESIGN_CONFLUENCE_FIXTURE: join(
-      repoRoot,
-      "packages",
-      "daemon",
-      "test",
-      "fixtures",
-      "confluence",
-      "golden",
-    ),
     CDS_DESIGN_CREDENTIAL_STORE: "memory",
   };
   delete env.ANTHROPIC_API_KEY;
@@ -138,12 +121,12 @@ async function main() {
     await page.getByPlaceholder("ws://127.0.0.1:7823?token=…").fill(daemonUrl);
     await page.getByRole("button", { name: "연결" }).click();
     await page.waitForSelector(".planner__body", { timeout: 60000 });
-    await page.getByRole("tab", { name: "화면" }).click();
+    await page.waitForSelector(".screenpanel__bar", { timeout: 60000 });
     await page.waitForSelector(".preview", { timeout: 600000 });
-    check("the planner connects and the 화면 segment shows the repo preview", true);
+    check("the planner connects and the workspace shows the repo preview", true);
 
     // --- the panel --------------------------------------------------------
-    await viaMenu(page, "저장");
+    await viaActionBar(page, "저장");
     await page.waitForSelector('[role="dialog"][aria-label="저장 검토"]', { timeout: 5000 });
     check("the empty panel says there is nothing to save", (await page.locator(".diff__files").count()) === 0);
     await page.keyboard.press("Escape");
@@ -158,7 +141,7 @@ async function main() {
     const indexHtml = readFileSync(join(WORK_ROOT, "index.html"), "utf8");
     writeFileSync(join(WORK_ROOT, "index.html"), `${indexHtml}<p>회원 관리 목록 추가</p>\n`);
 
-    await viaMenu(page, "저장");
+    await viaActionBar(page, "저장");
     await page.waitForSelector(".diff__file", { timeout: 10000 });
     const rows = page.locator(".diff__file");
     check(

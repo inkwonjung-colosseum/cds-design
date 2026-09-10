@@ -30,9 +30,8 @@ import {
   RepoWorkspace,
 } from "../dist/repo.js";
 import { MemoryCredentialStore, REPO_PAT_ITEM } from "../dist/credentials.js";
-import { repoPatItem } from "../dist/projects.js";
+import { createFixtureRepo, freePort, pushFixtureChange } from "./fixture-repo.mjs";
 import { detectsRegistryAuthFailure, pnpmCandidates } from "../dist/environment.js";
-import { createFixtureRepo, freePort } from "./fixture-repo.mjs";
 
 const never = () => false;
 
@@ -134,7 +133,6 @@ test("a failed clone never repeats the PAT in its detail", async () => {
   try {
     const status = await workspace.sync();
     assert.equal(status.phase, "error");
-    assert.equal(status.patConfigured, true);
     assert.ok(!JSON.stringify(broadcasts).includes("ghp_super_secret"), "the PAT must stay daemon-side");
   } finally {
     delete process.env.CLAUDE_CONFIG_DIR;
@@ -202,6 +200,52 @@ test("a seeded repo walks cloning → installing → starting, and a dead previe
   }
 });
 
+test("a bring-up in flight reads as running, so the onboarding check can tell progress from a broken manifest", async () => {
+  const dir = workdir("hub-repo-syncstate-");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
+  try {
+    const port = await freePort();
+    // A slow install stretches the working window, so the wizard's check —
+    // which fires while `project.create` is still cloning — reliably lands
+    // inside it instead of racing the whole bootstrap.
+    const fixture = await createFixtureRepo({
+      dir: join(dir, "fixture"),
+      port,
+      installCommand: "sleep 0.5",
+    });
+
+    const workspace = new RepoWorkspace({
+      root: join(dir, "work"),
+      url: fixture.remote,
+      onStatus: () => undefined,
+    });
+    const settling = workspace.sync();
+
+    let during = workspace.syncState();
+    const WORKING = ["cloning", "pulling", "installing", "starting"];
+    const deadline = Date.now() + 10_000;
+    while (!WORKING.includes(during.phase) && during.phase !== "ready" && Date.now() < deadline) {
+      await new Promise((ok) => setTimeout(ok, 10));
+      during = workspace.syncState();
+    }
+    assert.ok(
+      WORKING.includes(during.phase),
+      `expected a working phase mid-bring-up, saw ${during.phase}`,
+    );
+    assert.equal(during.running, true);
+
+    const done = await settling;
+    const settled = workspace.syncState();
+    assert.equal(settled.running, false);
+    assert.equal(done.phase, "ready", done.detail ?? "");
+    assert.equal(settled.phase, "ready");
+    await workspace.stop();
+  } finally {
+    delete process.env.CLAUDE_CONFIG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("changing the url discards the old clone, re-clones, and reports the move once", async () => {
   const dir = workdir("hub-repo-reclone-");
   process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
@@ -240,35 +284,6 @@ test("changing the url discards the old clone, re-clones, and reports the move o
   }
 });
 
-test("a PAT saved through update() lands under the owning project's item", async () => {
-  const store = new MemoryCredentialStore();
-  // No url: update() settles in `missing` without cloning, which is all this
-  // check needs — where the secret is filed, not what git does with it.
-  const alpha = new RepoWorkspace({
-    root: join(workdir("hub-repo-pat-alpha-"), "work"),
-    url: null,
-    store,
-    patItem: repoPatItem("alpha"),
-    onStatus: () => undefined,
-  });
-  const beta = new RepoWorkspace({
-    root: join(workdir("hub-repo-pat-beta-"), "work"),
-    url: null,
-    store,
-    patItem: repoPatItem("beta"),
-    onStatus: () => undefined,
-  });
-
-  await alpha.update({ pat: "ghp_alpha" });
-  await beta.update({ pat: "ghp_beta" });
-  assert.equal(await store.load(repoPatItem("alpha")), "ghp_alpha");
-  assert.equal(await store.load(repoPatItem("beta")), "ghp_beta", "a second project never overwrites the first");
-  assert.equal(await store.load(REPO_PAT_ITEM), null, "the pre-projects item is left alone");
-
-  await alpha.update({ pat: null });
-  assert.equal(await store.load(repoPatItem("alpha")), null, "clearing removes only that project's PAT");
-  assert.equal(await store.load(repoPatItem("beta")), "ghp_beta");
-});
 
 // ---------------------------------------------------------------------------
 // Unified diff parsing
@@ -726,3 +741,221 @@ import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 const promisifiedRun = async (command, args) => (await promisify(execFileCb)(command, args)).stdout;
 
+
+// ---------------------------------------------------------------------------
+// 레포 최신화: pull the developer's side without reading git
+// ---------------------------------------------------------------------------
+
+const clone = (dir, fixture) =>
+  new RepoWorkspace({
+    root: join(dir, "work"),
+    url: fixture.remote,
+    onStatus: () => undefined,
+  });
+
+const bringUp = async (dir, fixture) => {
+  const workspace = clone(dir, fixture);
+  await workspace.sync();
+  await workspace.stop();
+  return workspace;
+};
+
+test("최신화 carries unsaved work across a moved base — tracked and untracked alike", async () => {
+  const dir = workdir("hub-refresh-dirty-");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
+  try {
+    const fixture = await createFixtureRepo({ dir: join(dir, "fixture"), port: await freePort() });
+    const workspace = await bringUp(dir, fixture);
+
+    // The planner's unsaved half: a tracked edit at the top of CLAUDE.md
+    // (nine lines from the developer's edit below, so git can truly combine
+    // them) plus a brand-new screen.
+    const claude = readFileSync(join(dir, "work", "CLAUDE.md"), "utf8");
+    writeFileSync(
+      join(dir, "work", "CLAUDE.md"),
+      claude.replace("# fixture cds-design 레포", "# 기획자의 저장하지 않은 제목"),
+    );
+    mkdirSync(join(dir, "work", "src", "screens", "new"), { recursive: true });
+    writeFileSync(join(dir, "work", "src", "screens", "new", "New.screen.tsx"), "export const New = () => null;\n");
+
+    // The developer's side moved the same file's last rule meanwhile.
+    const seedClaude = readFileSync(join(fixture.seed, "CLAUDE.md"), "utf8");
+    await pushFixtureChange(fixture.seed, fixture.remote, {
+      "CLAUDE.md": seedClaude.replace(
+        "- 만들거나 바꾼 화면을 이름과 경로로 답변에 남긴다.",
+        "- 만들거나 바꾼 화면을 이름과 경로로 답변에 남긴다 — 개발자가 다듬은 문장.",
+      ),
+    });
+
+    const briefs = [];
+    await workspace.pull((brief) => briefs.push(brief));
+
+    const merged = readFileSync(join(dir, "work", "CLAUDE.md"), "utf8");
+    assert.ok(merged.includes("개발자가 다듬은 문장"), "the developer's change landed");
+    assert.ok(merged.includes("기획자의 저장하지 않은 제목"), "the planner's unsaved edit survived");
+    assert.ok(existsSync(join(dir, "work", "src", "screens", "new", "New.screen.tsx")), "untracked screens ride along");
+    assert.deepEqual(briefs, [], "a clean combine briefs nobody");
+    const status = await workspace.status();
+    assert.equal(status.phase, "ready");
+    assert.ok(status.pendingChanges >= 2, `the work is back, awaiting 저장: ${status.pendingChanges}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a bare bring-up carries unsaved work across a moved base too", async () => {
+  const dir = workdir("hub-refresh-bootstrap-");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
+  try {
+    const fixture = await createFixtureRepo({ dir: join(dir, "fixture"), port: await freePort() });
+    const workspace = await bringUp(dir, fixture);
+
+    // The planner left unsaved work at the top of CLAUDE.md; the developer
+    // merged an edit into the same file's end. A blind `git pull --ff-only`
+    // refused this exact shape.
+    const claude = readFileSync(join(dir, "work", "CLAUDE.md"), "utf8");
+    writeFileSync(
+      join(dir, "work", "CLAUDE.md"),
+      claude.replace("# fixture cds-design 레포", "# 기획자의 저장하지 않은 제목"),
+    );
+    const seedClaude = readFileSync(join(fixture.seed, "CLAUDE.md"), "utf8");
+    await pushFixtureChange(fixture.seed, fixture.remote, {
+      "CLAUDE.md": seedClaude.replace(
+        "- 만들거나 바꾼 화면을 이름과 경로로 답변에 남긴다.",
+        "- 만들거나 바꾼 화면을 이름과 경로로 답변에 남긴다 — 개발자가 다듬은 문장.",
+      ),
+    });
+
+    const status = await workspace.sync();
+    assert.equal(status.phase, "ready", status.detail ?? "");
+    const merged = readFileSync(join(dir, "work", "CLAUDE.md"), "utf8");
+    assert.ok(merged.includes("개발자가 다듬은 문장"), "the developer's change landed");
+    assert.ok(merged.includes("기획자의 저장하지 않은 제목"), "the planner's unsaved edit survived");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("최신화 hands a genuine conflict to Claude, work parked and named", async () => {
+  const dir = workdir("hub-refresh-conflict-");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
+  try {
+    const fixture = await createFixtureRepo({ dir: join(dir, "fixture"), port: await freePort() });
+    const workspace = await bringUp(dir, fixture);
+
+    const html = readFileSync(join(dir, "work", "index.html"), "utf8");
+    writeFileSync(
+      join(dir, "work", "index.html"),
+      html.replace("<p>연결 레포가 렌더하는 미리보기입니다.</p>", "<p>기획자의 줄</p>"),
+    );
+    // The developer changed the very same line: git cannot combine this.
+    const seedHtml = readFileSync(join(fixture.seed, "index.html"), "utf8");
+    await pushFixtureChange(fixture.seed, fixture.remote, {
+      "index.html": seedHtml.replace("<p>연결 레포가 렌더하는 미리보기입니다.</p>", "<p>개발자의 줄</p>"),
+    });
+
+    const briefs = [];
+    await workspace.pull((brief) => briefs.push(brief));
+
+    assert.equal(briefs.length, 1, `exactly one brief: ${briefs.length}`);
+    assert.match(briefs[0], /<!-- cds-design:gate .*최신 변경 받아오기/);
+    assert.match(briefs[0], /index\.html/);
+    assert.match(briefs[0], /stash drop/);
+
+    const status = await promisifiedRun("git", ["-C", join(dir, "work"), "status", "--porcelain"]);
+    assert.match(status, /^UU index\.html/m, "the conflicted file sits unmerged, awaiting Claude");
+    const stashes = await promisifiedRun("git", ["-C", join(dir, "work"), "stash", "list"]);
+    assert.match(stashes, /최신화 임시 보관/, "the parked work is not dropped");
+
+    // Claude's recovery, exactly as the brief describes: resolve, add, drop.
+    writeFileSync(join(dir, "work", "index.html"), "<p>합쳐진 줄</p>\n");
+    await promisifiedRun("git", ["-C", join(dir, "work"), "add", "index.html"]);
+    await promisifiedRun("git", ["-C", join(dir, "work"), "stash", "drop"]);
+    const after = await workspace.status();
+    assert.equal(after.phase, "ready");
+    assert.ok(after.pendingChanges >= 1, "the resolved work is back, awaiting 저장");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("mid-cycle, the developer's base merges into the cycle — conflict included", async () => {
+  const dir = workdir("hub-refresh-cycle-");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
+  try {
+    const fixture = await createFixtureRepo({ dir: join(dir, "fixture"), port: await freePort() });
+    const workspace = await bringUp(dir, fixture);
+
+    // The first 저장 opens the cycle branch and pushes it.
+    const html = readFileSync(join(dir, "work", "index.html"), "utf8");
+    writeFileSync(
+      join(dir, "work", "index.html"),
+      html.replace("<p>연결 레포가 렌더하는 미리보기입니다.</p>", "<p>화면 1</p>"),
+    );
+    const saved = await workspace.save({ message: "화면 1" });
+    assert.equal(saved.stage, "published", saved.detail ?? "");
+    assert.match(workspace.currentBranch ?? "", /^cds-design\//);
+
+    // The developer changes the same line on the base branch meanwhile.
+    const seedHtml = readFileSync(join(fixture.seed, "index.html"), "utf8");
+    await pushFixtureChange(fixture.seed, fixture.remote, {
+      "index.html": seedHtml.replace("<p>연결 레포가 렌더하는 미리보기입니다.</p>", "<p>개발자가 고친 줄</p>"),
+    });
+
+    // Unsaved work on another file parks while the merge runs.
+    writeFileSync(join(dir, "work", "CLAUDE.md"), "# 기획자의 메모\n");
+
+    const briefs = [];
+    await workspace.pull((brief) => briefs.push(brief));
+
+    assert.equal(briefs.length, 1, `one brief: ${briefs.join(" | ")}`);
+    assert.match(briefs[0], /\[conflict\]/);
+    assert.match(briefs[0], /git stash pop/);
+    const verify = await promisifiedRun("git", ["-C", join(dir, "work"), "rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+    assert.ok(verify.trim().length > 0, "the merge stays open for Claude");
+
+    // Claude finishes the merge, then replays the parked work.
+    writeFileSync(join(dir, "work", "index.html"), "<p>합친 화면</p>\n");
+    await promisifiedRun("git", ["-C", join(dir, "work"), "add", "index.html"]);
+    await promisifiedRun(
+      "git",
+      ["-C", join(dir, "work"), "-c", "user.name=T", "-c", "user.email=t@t", "commit", "-m", "[conflict] 병합 정리"],
+    );
+    await promisifiedRun("git", ["-C", join(dir, "work"), "stash", "pop"]);
+    const claude = readFileSync(join(dir, "work", "CLAUDE.md"), "utf8");
+    assert.ok(claude.includes("기획자의 메모"), "the parked edit came back after the merge");
+
+    const parents = await promisifiedRun("git", ["-C", join(dir, "work"), "rev-list", "--parents", "-n", "1", "HEAD"]);
+    assert.equal(parents.trim().split(" ").length, 3, "the cycle carries a real merge commit");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a base branch that diverged is named, never rewritten", async () => {
+  const dir = workdir("hub-refresh-diverged-");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, "claude-config");
+  try {
+    const fixture = await createFixtureRepo({ dir: join(dir, "fixture"), port: await freePort() });
+    const workspace = await bringUp(dir, fixture);
+
+    // A local commit on the base branch (a session could make one) plus a
+    // fresh upstream commit: 자동 병합 must not rewrite either side.
+    writeFileSync(join(dir, "work", "CLAUDE.md"), "# 로컬 커밋\n");
+    await promisifiedRun("git", ["-C", join(dir, "work"), "add", "CLAUDE.md"]);
+    await promisifiedRun(
+      "git",
+      ["-C", join(dir, "work"), "-c", "user.name=T", "-c", "user.email=t@t", "commit", "-m", "local"],
+    );
+    const localHead = (await promisifiedRun("git", ["-C", join(dir, "work"), "rev-parse", "HEAD"])).trim();
+    await pushFixtureChange(fixture.seed, fixture.remote, { "업스트림.md": "원격에서만 있는 커밋\n" });
+
+    await workspace.pull();
+    const status = await workspace.status();
+    assert.match(status.detail ?? "", /갈라진/, `the reason is Korean: ${status.detail ?? ""}`);
+    const head = (await promisifiedRun("git", ["-C", join(dir, "work"), "rev-parse", "HEAD"])).trim();
+    assert.equal(head, localHead, "local history is untouched");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

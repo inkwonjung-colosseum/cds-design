@@ -97,7 +97,15 @@ async function main() {
   process.env.CDS_DESIGN_REPO_DIR = ROOT;
   process.env.CDS_DESIGN_REPO_URL = fixture.remote;
   const daemonPort = await freePort();
-  const server = new DaemonServer({ host: "127.0.0.1", port: daemonPort, token: "publish-e2e" });
+  const notices = [];
+  const server = new DaemonServer({
+    host: "127.0.0.1",
+    port: daemonPort,
+    token: "publish-e2e",
+    // The desktop app paints these as OS notifications; the test reads the
+    // meaning straight off the hook.
+    onNotice: (notice) => notices.push(notice),
+  });
   await server.start();
 
   const ws = new WebSocket(`ws://127.0.0.1:${daemonPort}?token=publish-e2e`);
@@ -149,7 +157,7 @@ async function main() {
 
     // --- 3. a failing check stops the save, and tells the session ---------
     writeFileSync(join(ROOT, "scripts", "check.mjs"), FAILING_CHECK);
-    const created = await request({ id: "3", type: "session.create", workspace: "design" });
+    const created = await request({ id: "3", type: "session.create" });
     const sessionId = created.sessionId;
 
     const failed = await request({
@@ -202,7 +210,26 @@ async function main() {
         marked.body.includes("테스트용 실패"),
       marked.body.split("\n")[0] ?? "",
     );
+    check(
+      "the gate failure fired the planner notice for the unnamed thread",
+      notices.some(
+        (n) =>
+          n.kind === "gate" &&
+          n.stage === "save" &&
+          n.sessionId === sessionId &&
+          n.title === "새 화면",
+      ),
+      JSON.stringify(notices),
+    );
     await request({ id: "5", type: "session.close", sessionId });
+    check(
+      "closing the thread calls back nothing — the planner just did it themselves",
+      notices.filter((n) => n.sessionId === sessionId).length === 1 &&
+        !notices.some(
+          (n) => n.sessionId === sessionId && (n.kind === "done" || n.kind === "crashed" || n.kind === "ask"),
+        ),
+      JSON.stringify(notices),
+    );
 
     check(
       "the check gate failure was broadcast",

@@ -71,15 +71,17 @@ async function main() {
     const groups = await page.locator(".settings__groupTitle").allInnerTexts();
     check(
       "the panel offers only what a planner sets",
-      ["화면", "대화", "동작", "연결 레포", "문제 해결"].every((g) => groups.includes(g)) &&
-        groups.length === 5,
+      ["화면", "대화", "동작", "GITHUB", "연결 레포", "문제 해결"].every((g) => groups.includes(g)) &&
+        groups.length === 6,
       groups.join(", "),
     );
     // No daemon yet, so the repo fields wait for one instead of pretending.
+    // No daemon yet: the GitHub token form and the repo url field wait for
+    // one instead of pretending.
     check(
-      "repo url and PAT inputs wait for a daemon",
-      (await page.getByLabel("연결 레포 주소").isDisabled()) === true &&
-        (await page.getByLabel("연결 레포 개인 액세스 토큰").isDisabled()) === true,
+      "the token input and repo url wait for a daemon",
+      (await page.getByLabel("GitHub 개인 액세스 토큰").isDisabled()) === true &&
+        (await page.getByLabel("연결 레포 주소").isDisabled()) === true,
     );
 
     // 3. theme applies live and persists.

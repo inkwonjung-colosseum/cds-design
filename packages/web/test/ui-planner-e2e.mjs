@@ -94,20 +94,6 @@ async function main() {
     // Same isolation as every other suite: the registry belongs to this run.
     CDS_DESIGN_PROJECTS_SETTINGS: join(DIR, "projects.json"),
     CDS_DESIGN_PROJECTS_DIR: join(DIR, "projects"),
-    // Onboarding-gate seeds: Confluence is env-configured against fixtures,
-    // so all four §8 steps pass (repo stays a non-blocking warn until cloned).
-    CDS_DESIGN_CONFLUENCE_SITE: "https://example.atlassian.net",
-    CDS_DESIGN_CONFLUENCE_EMAIL: "dev@example.com",
-    CDS_DESIGN_CONFLUENCE_TOKEN: "planner-e2e-token",
-    CDS_DESIGN_CONFLUENCE_FIXTURE: join(
-      repoRoot,
-      "packages",
-      "daemon",
-      "test",
-      "fixtures",
-      "confluence",
-      "golden",
-    ),
     CDS_DESIGN_CREDENTIAL_STORE: "memory",
   };
   delete env.ANTHROPIC_API_KEY;
@@ -138,11 +124,9 @@ async function main() {
   await page.getByPlaceholder("ws://127.0.0.1:7823?token=…").fill(daemonUrl);
   await page.getByRole("button", { name: "연결" }).click();
 
-  // --- 1. connecting lands straight in the planner -------------------------
+  // --- 1. connecting lands straight in the workspace ------------------------
   await page.waitForSelector(".planner__body", { timeout: 60000 });
-  check("connecting opens the planner, with no mode to choose", true);
-  await page.getByRole("tab", { name: "디자인" }).click();
-
+  check("connecting opens the workspace, with no mode to choose", true);
   // --- 2. the connected repo bootstraps itself ----------------------------
   const progress = page.locator(".progress__head h2");
   if (await progress.count()) {
@@ -231,17 +215,13 @@ async function main() {
   );
 
   // --- 8. the developer surface is gone, and what it lent us is here -----
-  const devLeftovers = await page.locator(".modeswitch, .picker, .sidebar, .header__actions").count();
+  const devLeftovers = await page.locator(".modeswitch, .picker, .header__actions").count();
   check("no developer chrome survives anywhere in the app", devLeftovers === 0);
 
-  const row = page.locator(".planner__sessions .row-wrap").first();
-  await row.hover();
-  check("a planning thread can be deleted from its row", await row.locator(".row-delete").isVisible());
-  check(
-    "the session row dates itself in Korean, not as a bare date",
-    /방금|분 전|시간 전|일 전/.test(await row.locator(".row__meta").innerText()),
-    await row.locator(".row__meta").innerText(),
-  );
+  // Threads live in the tab strip now; closing a thread is learned there.
+  const tab = page.locator(".sessiontab-wrap").first();
+  await tab.hover();
+  check("a thread can be deleted from its tab", await tab.locator(".sessiontab__close").isVisible());
   // The ring only appears once a settled turn has reported usage, which is
   // exactly where step 7 left the session.
   check("the composer shows how long the conversation has grown", await page.locator(`${VISIBLE}.ring`).isVisible());

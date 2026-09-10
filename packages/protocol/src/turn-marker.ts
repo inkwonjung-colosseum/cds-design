@@ -5,7 +5,7 @@
  * Some turns in a planner's chat are not typed by the planner: a bundle of
  * comment pins, the brief that opens a 화면 thread, a 기획서 comparison, a
  * failed gate handed back to Claude. Their text is written for Claude — CSS
- * paths, mirror paths, command output — and a planner reading their own chat
+ * paths, file paths, command output — and a planner reading their own chat
  * should not meet any of it.
  *
  * The turn carries a marker on its first line:
