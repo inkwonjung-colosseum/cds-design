@@ -47,7 +47,7 @@ test("the golden pass runs end to end, in order", async () => {
   // 개발자에게 넘기기 — the create body is deep-equalled by the fixture.
   const created = await client.createPullRequest({
     ...REPO,
-    head: "drafthouse/cds/20260909-1",
+    head: "cds-design/cds/20260909-1",
     base: "main",
     title: "회원 관리 기획서",
     body: byName("pr-create").request.bodyJson.body,
@@ -57,7 +57,7 @@ test("the golden pass runs end to end, in order", async () => {
     url: "https://github.com/colosseumcoinckr/cds-open-design/pull/7",
     title: "회원 관리 기획서",
     state: "open",
-    branch: "drafthouse/cds/20260909-1",
+    branch: "cds-design/cds/20260909-1",
   });
 
   // 열림 — no review yet.
@@ -169,7 +169,7 @@ test("a 422 names the field GitHub complained about", async () => {
         status: 422,
         json: {
           message: "Validation Failed",
-          errors: [{ message: "A pull request already exists for colosseumcoinckr:drafthouse/cds/20260909-1." }],
+          errors: [{ message: "A pull request already exists for colosseumcoinckr:cds-design/cds/20260909-1." }],
         },
       },
     },
@@ -180,7 +180,7 @@ test("a 422 names the field GitHub complained about", async () => {
     () =>
       client.createPullRequest({
         ...REPO,
-        head: "drafthouse/cds/20260909-1",
+        head: "cds-design/cds/20260909-1",
         base: "main",
         title: "회원 관리 기획서",
         body: "본문",
@@ -205,8 +205,8 @@ test("parseRepoSlug reads every remote form the planner can paste", () => {
   assert.equal(parseRepoSlug(""), null);
 });
 
-test("DRAFTHOUSE_GITHUB_FIXTURE picks the recorded transport", () => {
-  const chosen = createGitHubTransport({ DRAFTHOUSE_GITHUB_FIXTURE: fixtureDir });
+test("CDS_DESIGN_GITHUB_FIXTURE picks the recorded transport", () => {
+  const chosen = createGitHubTransport({ CDS_DESIGN_GITHUB_FIXTURE: fixtureDir });
   assert.ok(chosen.transport instanceof FixtureTransport);
   assert.equal(chosen.fixtureDir, fixtureDir);
 
@@ -218,7 +218,7 @@ test("DRAFTHOUSE_GITHUB_FIXTURE picks the recorded transport", () => {
 
   // An unloadable directory still reports what was asked for, so a caller
   // cannot mistake a broken fixture set for "no fixtures configured".
-  const broken = createGitHubTransport({ DRAFTHOUSE_GITHUB_FIXTURE: join(fixtureDir, "nope") });
+  const broken = createGitHubTransport({ CDS_DESIGN_GITHUB_FIXTURE: join(fixtureDir, "nope") });
   assert.equal(broken.fixtureDir, join(fixtureDir, "nope"));
   assert.ok(!(broken.transport instanceof FixtureTransport));
 });

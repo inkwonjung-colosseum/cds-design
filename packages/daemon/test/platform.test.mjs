@@ -141,3 +141,4 @@ test("the daemon still reports a usable status when git is missing", async () =>
   assert.equal(typeof status.platform, "string");
   assert.equal(status.protocolVersion, 5);
 });
+

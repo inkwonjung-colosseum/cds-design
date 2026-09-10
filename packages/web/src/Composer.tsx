@@ -6,7 +6,7 @@ import type {
   PlanUsage,
   SessionCommand,
   SessionSelectors,
-} from "@drafthouse/protocol";
+} from "@cds-design/protocol";
 import {
   ArrowUpIcon,
   CheckIcon,

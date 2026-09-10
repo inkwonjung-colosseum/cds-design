@@ -1,7 +1,7 @@
 /**
  * Confluence sync end-to-end check, fully offline: the daemon's client is
  * pointed at the recorded fixtures in fixtures/confluence/e2e/ via
- * DRAFTHOUSE_CONFLUENCE_FIXTURE, and every step drives the real DaemonServer
+ * CDS_DESIGN_CONFLUENCE_FIXTURE, and every step drives the real DaemonServer
  * over the same WebSocket the browser uses.
  *
  * Story: credentials are set (token presence only comes back), a space
@@ -22,7 +22,7 @@ import { freePort } from "./fixture-repo.mjs";
 import { parseFrontmatter } from "../dist/sync/storage-markdown.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DIR = join(tmpdir(), "drafthouse-sync-e2e");
+const DIR = join(tmpdir(), "cds-design-sync-e2e");
 const ROOT = join(DIR, "mirror");
 // The mirror belongs to a project now, and a project has a repo root too. An
 // empty scratch directory is enough: migration turns a pointed-at repo dir into
@@ -32,18 +32,18 @@ const REPO_ROOT = join(DIR, "work");
 const FIXTURES = join(here, "fixtures", "confluence", "e2e");
 const API_TOKEN = "confluence_api_token_e2e";
 
-process.env.DRAFTHOUSE_CONFLUENCE_DIR = ROOT;
-process.env.DRAFTHOUSE_CONFLUENCE_SETTINGS = join(DIR, "settings.json");
-process.env.DRAFTHOUSE_CONFLUENCE_FIXTURE = FIXTURES;
+process.env.CDS_DESIGN_CONFLUENCE_DIR = ROOT;
+process.env.CDS_DESIGN_CONFLUENCE_SETTINGS = join(DIR, "settings.json");
+process.env.CDS_DESIGN_CONFLUENCE_FIXTURE = FIXTURES;
 // Every path the registry consults must land in the temp dir. Left on the
-// defaults the daemon writes ~/drafthouse/config/projects.json on the
+// defaults the daemon writes ~/cds-design/config/projects.json on the
 // developer's own machine, reads the developer's own repo.json url into the
 // migrated project — and then warm-starts a clone of that real remote.
-process.env.DRAFTHOUSE_REPO_DIR = REPO_ROOT;
-process.env.DRAFTHOUSE_REPO_SETTINGS = join(DIR, "repo.json");
-process.env.DRAFTHOUSE_PROJECTS_SETTINGS = join(DIR, "projects.json");
-process.env.DRAFTHOUSE_PROJECTS_DIR = join(DIR, "projects");
-process.env.DRAFTHOUSE_CREDENTIAL_STORE = "memory";
+process.env.CDS_DESIGN_REPO_DIR = REPO_ROOT;
+process.env.CDS_DESIGN_REPO_SETTINGS = join(DIR, "repo.json");
+process.env.CDS_DESIGN_PROJECTS_SETTINGS = join(DIR, "projects.json");
+process.env.CDS_DESIGN_PROJECTS_DIR = join(DIR, "projects");
+process.env.CDS_DESIGN_CREDENTIAL_STORE = "memory";
 
 const results = [];
 function check(name, passed, detail = "") {
@@ -313,7 +313,7 @@ async function checkBackgroundPullWiring() {
   // main() wiped DIR on its way out, registry and all; the second daemon
   // migrates from scratch and needs the same one-project shape.
   mkdirSync(REPO_ROOT, { recursive: true });
-  process.env.DRAFTHOUSE_BACKGROUND_PULL_MS = "40";
+  process.env.CDS_DESIGN_BACKGROUND_PULL_MS = "40";
   const port = await freePort();
   const server = new DaemonServer({ host: "127.0.0.1", port, token: "bg-pull" });
   await server.start(); // no mirrored spaces yet → nothing started
@@ -377,7 +377,7 @@ async function checkBackgroundPullWiring() {
   } finally {
     ws.close();
     await server.stop().catch(() => undefined);
-    delete process.env.DRAFTHOUSE_BACKGROUND_PULL_MS;
+    delete process.env.CDS_DESIGN_BACKGROUND_PULL_MS;
   }
 }
 

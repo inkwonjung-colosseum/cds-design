@@ -58,7 +58,7 @@ export function normalizeSiteUrl(siteUrl: string): string {
 }
 
 /**
- * Fixture transport when DRAFTHOUSE_CONFLUENCE_FIXTURE points at a loadable
+ * Fixture transport when CDS_DESIGN_CONFLUENCE_FIXTURE points at a loadable
  * fixture directory; otherwise `transport` is null and the caller builds a
  * FetchTransport for the configured site. (A non-null placeholder here used
  * to shadow the caller's per-site fallback and send every request to a
@@ -68,7 +68,7 @@ export function createConfluenceTransport(env: NodeJS.ProcessEnv = process.env):
   transport: RestTransport | null;
   fixtureDir: string | null;
 } {
-  const fixtureDir = env.DRAFTHOUSE_CONFLUENCE_FIXTURE ?? null;
+  const fixtureDir = env.CDS_DESIGN_CONFLUENCE_FIXTURE ?? null;
   if (fixtureDir) {
     try {
       return { transport: new FixtureTransport(loadFixturePairs(fixtureDir)), fixtureDir };

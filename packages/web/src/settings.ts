@@ -4,7 +4,7 @@ import type {
   PermissionMode,
   SessionModelInfo,
   Workspace,
-} from "@drafthouse/protocol";
+} from "@cds-design/protocol";
 import { DEFAULT_PERMISSION_MODE, SETTINGS_MODES } from "./chat-options";
 
 /**
@@ -62,7 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export const THEMES: ThemeChoice[] = ["system", "dark", "light"];
 
-const KEY = "drafthouse.settings";
+const KEY = "cds-design.settings";
 
 const EFFORT_LEVELS: EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
 
@@ -131,7 +131,7 @@ function legacyComposerDefaults(): Partial<ChatSettings> {
   for (const workspace of ["planning", "design"] as Workspace[]) {
     let raw: unknown;
     try {
-      raw = JSON.parse(localStorage.getItem(`drafthouse.composer.${workspace}`) ?? "null");
+      raw = JSON.parse(localStorage.getItem(`cds-design.composer.${workspace}`) ?? "null");
     } catch {
       continue;
     }
@@ -219,7 +219,7 @@ export function useSettings(): {
   return { settings, update, theme };
 }
 
-const MODELS_KEY = "drafthouse.models";
+const MODELS_KEY = "cds-design.models";
 
 /**
  * The model rows the daemon last served. Only a live session can be asked for

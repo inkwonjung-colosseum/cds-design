@@ -65,7 +65,7 @@ export function Shell({
   return (
     <div className="planner">
       <header className="planner__header">
-        <span className="brand-name">Drafthouse</span>
+        <span className="brand-name">CDS Design</span>
         <ProjectSwitcher daemon={daemon} onNewProject={onOpenOnboarding} />
         <span className="planner__spacer" />
         {/* The header used to read "데몬: 연결됨 · https://github.com/…" — the

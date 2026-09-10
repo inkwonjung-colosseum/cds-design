@@ -5,7 +5,7 @@
  * anything but the transport it was given, so the offline suites drive the
  * real client against recorded pairs
  * (packages/daemon/test/fixtures/github/) and the daemon selects that same
- * transport when DRAFTHOUSE_GITHUB_FIXTURE points at a fixture directory.
+ * transport when CDS_DESIGN_GITHUB_FIXTURE points at a fixture directory.
  *
  * Endpoints used (cite in every fixture):
  *   POST  /repos/{owner}/{repo}/pulls                          — open a pull request
@@ -289,9 +289,9 @@ export function parseRepoSlug(url: string): { owner: string; repo: string } | nu
 }
 
 /**
- * Fixture transport when DRAFTHOUSE_GITHUB_FIXTURE points at a loadable
+ * Fixture transport when CDS_DESIGN_GITHUB_FIXTURE points at a loadable
  * fixture directory; otherwise a fetch transport against api.github.com
- * (DRAFTHOUSE_GITHUB_API repoints it at a local server).
+ * (CDS_DESIGN_GITHUB_API repoints it at a local server).
  *
  * Unlike createConfluenceTransport this returns a usable transport in both
  * cases, because the api base is a constant rather than per-project settings:
@@ -306,8 +306,8 @@ export function createGitHubTransport(env: NodeJS.ProcessEnv = process.env): {
   transport: RestTransport;
   fixtureDir: string | null;
 } {
-  const apiUrl = (env.DRAFTHOUSE_GITHUB_API ?? "https://api.github.com").replace(/\/+$/, "");
-  const fixtureDir = env.DRAFTHOUSE_GITHUB_FIXTURE ?? null;
+  const apiUrl = (env.CDS_DESIGN_GITHUB_API ?? "https://api.github.com").replace(/\/+$/, "");
+  const fixtureDir = env.CDS_DESIGN_GITHUB_FIXTURE ?? null;
   if (fixtureDir) {
     try {
       return { transport: new FixtureTransport(loadFixturePairs(fixtureDir)), fixtureDir };

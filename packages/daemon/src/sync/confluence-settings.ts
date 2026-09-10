@@ -2,7 +2,7 @@
  * Daemon-side Confluence credentials, following the same persistence pattern
  * as the repo settings: a JSON file under CONFIG_DIR written atomically at mode
  * 0600 (the API token lands in it), read tolerantly, and overridable for
- * tests via DRAFTHOUSE_CONFLUENCE_SETTINGS. The token crosses the wire only as
+ * tests via CDS_DESIGN_CONFLUENCE_SETTINGS. The token crosses the wire only as
  * presence.
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -17,7 +17,7 @@ export interface StoredConfluenceSettings {
 }
 
 function settingsFile(env: NodeJS.ProcessEnv = process.env): string {
-  return env.DRAFTHOUSE_CONFLUENCE_SETTINGS ?? join(CONFIG_DIR, "confluence.json");
+  return env.CDS_DESIGN_CONFLUENCE_SETTINGS ?? join(CONFIG_DIR, "confluence.json");
 }
 
 /** A setting that is missing or whitespace-only reads as unset. */
@@ -42,7 +42,7 @@ export function loadConfluenceSettings(env: NodeJS.ProcessEnv = process.env): St
 
 /**
  * Full credentials with env overrides and the stored token: the settings
- * file supplies site/email, DRAFTHOUSE_CONFLUENCE_{SITE,EMAIL,TOKEN} win
+ * file supplies site/email, CDS_DESIGN_CONFLUENCE_{SITE,EMAIL,TOKEN} win
  * (tests, headless), and the token itself comes from the caller's store.
  */
 export function confluenceCredentials(
@@ -54,9 +54,9 @@ export function confluenceCredentials(
     // An empty string is unset, not a value: it would otherwise reach the
     // transport and turn every request into a relative-URL fetch failure
     // (boundary-cohort dogfood finding).
-    siteUrl: cleanSetting(env.DRAFTHOUSE_CONFLUENCE_SITE) ?? cleanSetting(settings.siteUrl),
-    email: cleanSetting(env.DRAFTHOUSE_CONFLUENCE_EMAIL) ?? cleanSetting(settings.email),
-    apiToken: cleanSetting(env.DRAFTHOUSE_CONFLUENCE_TOKEN) ?? token,
+    siteUrl: cleanSetting(env.CDS_DESIGN_CONFLUENCE_SITE) ?? cleanSetting(settings.siteUrl),
+    email: cleanSetting(env.CDS_DESIGN_CONFLUENCE_EMAIL) ?? cleanSetting(settings.email),
+    apiToken: cleanSetting(env.CDS_DESIGN_CONFLUENCE_TOKEN) ?? token,
   };
 }
 
@@ -66,7 +66,7 @@ export function saveConfluenceSettings(
 ): void {
   const file = settingsFile(env);
   mkdirSync(dirname(file), { recursive: true });
-  const temporary = `${file}.drafthouse-${process.pid}`;
+  const temporary = `${file}.cds-design-${process.pid}`;
   writeFileSync(temporary, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
   renameSync(temporary, file);
 }

@@ -22,7 +22,7 @@
 import { createHash } from "node:crypto";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DRAFTHOUSE_DIR } from "../environment.js";
+import { CDS_DESIGN_DIR } from "../environment.js";
 import type { ConfluenceClient } from "./confluence-client.js";
 import {
   markdownToStorage,
@@ -40,14 +40,14 @@ export type {
   ConfluenceReview,
   ConfluenceStatus,
   DocSummary,
-} from "@drafthouse/protocol";
+} from "@cds-design/protocol";
 import type {
   ConfluenceConflict,
   ConfluencePhase,
   ConfluenceReview,
   ConfluenceStatus,
   DocSummary,
-} from "@drafthouse/protocol";
+} from "@cds-design/protocol";
 
 export interface Deferral {
   readonly reason: string;
@@ -80,7 +80,7 @@ interface MirrorState {
 const STATE_FILE = ".confluence-sync.json";
 
 export function resolveConfluenceRoot(env: NodeJS.ProcessEnv = process.env): string {
-  return env.DRAFTHOUSE_CONFLUENCE_DIR ?? join(DRAFTHOUSE_DIR, "confluence");
+  return env.CDS_DESIGN_CONFLUENCE_DIR ?? join(CDS_DESIGN_DIR, "confluence");
 }
 
 /**
@@ -927,7 +927,7 @@ export class SyncEngine {
   private writeState(spaceKey: string, state: MirrorState): void {
     mkdirSync(this.mirror(spaceKey), { recursive: true });
     const file = join(this.mirror(spaceKey), STATE_FILE);
-    const temporary = `${file}.drafthouse-${process.pid}`;
+    const temporary = `${file}.cds-design-${process.pid}`;
     writeFileSync(temporary, `${JSON.stringify(state, null, 2)}\n`);
     renameSync(temporary, file);
   }

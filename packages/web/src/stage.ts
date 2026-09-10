@@ -1,4 +1,4 @@
-import type { DocSummary, DrafthouseScreen, HandoffStatus } from "@drafthouse/protocol";
+import type { DocSummary, CdsDesignScreen, HandoffStatus } from "@cds-design/protocol";
 
 /**
  * Where one 기획서 has got to, and therefore what to do with it next
@@ -69,7 +69,7 @@ export interface StageInput {
   /** The open 기획서, or null when the tree has no selection. */
   page: DocSummary | null;
   /** What the connected repo declared it can render (empty until it loads). */
-  screens: DrafthouseScreen[];
+  screens: CdsDesignScreen[];
   /** Uncommitted changes in the clone, as the daemon last counted them. */
   pendingChanges: number;
   /** This cycle's branch, or null before the first 저장. */
@@ -203,7 +203,7 @@ const MARK_TITLE: Record<string, string> = {
 
 export function pageMark(
   page: DocSummary,
-  screens: DrafthouseScreen[],
+  screens: CdsDesignScreen[],
   handoff: HandoffStatus | null,
 ): { mark: string; title: string } {
   // Zero and null on purpose: the clone's dirty-file count is one number for

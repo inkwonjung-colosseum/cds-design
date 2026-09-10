@@ -1,4 +1,4 @@
-import type { EffortLevel, PermissionMode, SessionModelInfo } from "@drafthouse/protocol";
+import type { EffortLevel, PermissionMode, SessionModelInfo } from "@cds-design/protocol";
 
 /**
  * How the three conversation settings are worded.

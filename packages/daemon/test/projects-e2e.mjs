@@ -25,25 +25,25 @@ import { DaemonServer } from "../dist/server.js";
 import { freePort, writeStubClaude } from "./fixture-repo.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DIR = join(tmpdir(), "drafthouse-projects-e2e");
+const DIR = join(tmpdir(), "cds-design-projects-e2e");
 const FIXTURES = join(here, "fixtures", "confluence", "projects");
 
-process.env.DRAFTHOUSE_CONFLUENCE_FIXTURE = FIXTURES;
-process.env.DRAFTHOUSE_CONFLUENCE_SETTINGS = join(DIR, "confluence.json");
-process.env.DRAFTHOUSE_CONFLUENCE_SITE = "https://example.atlassian.net";
-process.env.DRAFTHOUSE_CONFLUENCE_EMAIL = "dev@example.com";
-process.env.DRAFTHOUSE_CONFLUENCE_TOKEN = "projects_e2e_token";
-process.env.DRAFTHOUSE_CREDENTIAL_STORE = "memory";
+process.env.CDS_DESIGN_CONFLUENCE_FIXTURE = FIXTURES;
+process.env.CDS_DESIGN_CONFLUENCE_SETTINGS = join(DIR, "confluence.json");
+process.env.CDS_DESIGN_CONFLUENCE_SITE = "https://example.atlassian.net";
+process.env.CDS_DESIGN_CONFLUENCE_EMAIL = "dev@example.com";
+process.env.CDS_DESIGN_CONFLUENCE_TOKEN = "projects_e2e_token";
+process.env.CDS_DESIGN_CREDENTIAL_STORE = "memory";
 // Every registry path in the temp dir. This suite deliberately does NOT set
-// DRAFTHOUSE_REPO_DIR or DRAFTHOUSE_CONFLUENCE_DIR: those override the ACTIVE
+// CDS_DESIGN_REPO_DIR or CDS_DESIGN_CONFLUENCE_DIR: those override the ACTIVE
 // project's roots, which is exactly the per-project separation under test.
-process.env.DRAFTHOUSE_PROJECTS_SETTINGS = join(DIR, "projects.json");
-process.env.DRAFTHOUSE_PROJECTS_DIR = join(DIR, "projects");
+process.env.CDS_DESIGN_PROJECTS_SETTINGS = join(DIR, "projects.json");
+process.env.CDS_DESIGN_PROJECTS_DIR = join(DIR, "projects");
 // A background tick mid-story would eat fixture pairs the assertions expect.
-process.env.DRAFTHOUSE_BACKGROUND_PULL_MS = "3600000";
+process.env.CDS_DESIGN_BACKGROUND_PULL_MS = "3600000";
 // A thread has to be creatable for the page-attachment story; no model turn is
 // run, so a stub that answers --version and `auth status` is the whole need.
-process.env.DRAFTHOUSE_CLAUDE_BIN = writeStubClaude(join(DIR, "bin"));
+process.env.CDS_DESIGN_CLAUDE_BIN = writeStubClaude(join(DIR, "bin"));
 
 const results = [];
 function check(name, passed, detail = "") {

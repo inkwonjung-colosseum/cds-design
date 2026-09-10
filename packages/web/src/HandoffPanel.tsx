@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { HandoffStatus } from "@drafthouse/protocol";
+import type { HandoffStatus } from "@cds-design/protocol";
 import type { Daemon } from "./daemon-client";
 import { CloseIcon } from "./icons";
 import { RUNNING, stageLine } from "./DiffPanel";

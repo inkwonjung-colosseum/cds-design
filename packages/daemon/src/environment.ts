@@ -4,20 +4,20 @@ import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { promisify } from "node:util";
-import type { DaemonStatus } from "@drafthouse/protocol";
-import { PROTOCOL_VERSION } from "@drafthouse/protocol";
+import type { DaemonStatus } from "@cds-design/protocol";
+import { PROTOCOL_VERSION } from "@cds-design/protocol";
 
 const run = promisify(execFile);
 
 /**
- * Everything Drafthouse writes lives under one folder in the user's home: the
+ * Everything CDS Design writes lives under one folder in the user's home: the
  * repo clone, the Confluence mirror, and this daemon's own settings. One root
  * is one thing to back up, explain, or delete.
  */
-export const DRAFTHOUSE_DIR = join(homedir(), "drafthouse");
+export const CDS_DESIGN_DIR = join(homedir(), "cds-design");
 
 /** Daemon settings: `daemon.json`, `repo.json`, `confluence.json`. */
-export const CONFIG_DIR = join(DRAFTHOUSE_DIR, "config");
+export const CONFIG_DIR = join(CDS_DESIGN_DIR, "config");
 
 export type Platform = "win32" | "darwin" | "linux";
 
@@ -192,7 +192,7 @@ export async function resolveClaudeExecutable(override?: string): Promise<string
   const platform = currentPlatform();
   const candidates = [
     override,
-    process.env.DRAFTHOUSE_CLAUDE_BIN,
+    process.env.CDS_DESIGN_CLAUDE_BIN,
     ...claudeCandidates(platform, homedir()),
   ].filter((value): value is string => Boolean(value));
 

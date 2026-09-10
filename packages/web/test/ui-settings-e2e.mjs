@@ -5,7 +5,7 @@
  * browser preference and should not need a daemon to change — so the whole
  * thing can be driven against the built app served from disk.
  *
- * Prerequisite: `pnpm --filter @drafthouse/web build`
+ * Prerequisite: `pnpm --filter @cds-design/web build`
  */
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -41,10 +41,10 @@ function serveDist() {
 
 const theme = (page) => page.evaluate(() => document.documentElement.dataset.theme);
 const stored = (page) =>
-  page.evaluate(() => JSON.parse(localStorage.getItem("drafthouse.settings") ?? "null"));
+  page.evaluate(() => JSON.parse(localStorage.getItem("cds-design.settings") ?? "null"));
 
 async function main() {
-  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @drafthouse/web build");
+  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @cds-design/web build");
 
   const server = await serveDist();
   const browser = await chromium.launch();
@@ -193,7 +193,7 @@ async function main() {
     // 8. a stored blob that is not a legal Settings must not brick the app.
     await page.evaluate(() =>
       localStorage.setItem(
-        "drafthouse.settings",
+        "cds-design.settings",
         JSON.stringify({ theme: "neon", sendKey: 7, confirmBeforeDelete: "yes" }),
       ),
     );

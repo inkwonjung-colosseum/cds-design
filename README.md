@@ -1,4 +1,4 @@
-# Drafthouse
+# CDS Design
 
 A planner writes a 기획서, chats with Claude Code to turn it into screens, and
 validates the plan against the real rendered app — without ever opening git,
@@ -7,7 +7,7 @@ Confluence, or a terminal.
 The tool knows one thing: keep a local folder in sync with a remote, and run a
 Claude Code session inside it. Everything domain-shaped — the stack, the design
 system, the screen rules, the checks, the preview command — is decided by the
-**connected repo** through its `drafthouse.json` and `CLAUDE.md`. What the
+**connected repo** through its `cds-design.json` and `CLAUDE.md`. What the
 planner sees in the preview is that repo's own app, framed as-is.
 
 One person, one machine, one subscription: each user runs their own daemon that
@@ -47,7 +47,7 @@ a bug.
   The tool never parses what renders inside the frame.
 - **저장 · 개발자에게 넘기기 · 반영됨.** Three words replace every git noun, and
   the planner never reads 브랜치, 커밋, 푸시, PR or 머지. **저장** creates this
-  cycle's own `drafthouse/<YYYYMMDD>-<n>` branch on its first use, runs the
+  cycle's own `cds-design/<YYYYMMDD>-<n>` branch on its first use, runs the
   repo's `check`, and commits and pushes exactly the reviewed diff there — the
   base branch is never written to, because a developer receives this work as a
   pull request they can read, run and refuse. **개발자에게 넘기기** runs `build`
@@ -68,7 +68,7 @@ a bug.
   refused by name, which is what keeps the mirror's optimistic lock from
   splitting in two.
 - **Confluence mirror.** A project's subtrees clone to
-  `~/drafthouse/projects/<slug>/confluence/<space>/` as hybrid Markdown: YAML frontmatter
+  `~/cds-design/projects/<slug>/confluence/<space>/` as hybrid Markdown: YAML frontmatter
   (`pageId version space title parentPageId`) plus a body where anything
   Markdown cannot hold — macros, merged cells, layouts — survives verbatim in
   ` ```confluence ` fences. Round-trips are lossless both ways. Pushes use
@@ -111,7 +111,7 @@ a bug.
   화면 thread, a 기획서 comparison, a failed gate: all four are written for
   Claude, in Claude's vocabulary, and all four used to land in the planner's own
   chat as CSS paths and command output. They now carry a marker on their first
-  line (`<!-- drafthouse:<kind> {…} -->`, an HTML comment Claude reads past) and
+  line (`<!-- cds-design:<kind> {…} -->`, an HTML comment Claude reads past) and
   the transcript renders them as a card — what was asked, in the planner's
   words, with the text Claude actually received one fold away. The marker is a
   prefix on the same string the SDK already stores, so a resumed thread replays
@@ -147,14 +147,14 @@ a bug.
 
 ```mermaid
 flowchart LR
-    subgraph app["Drafthouse (Electron · 브라우저 개발 경로 동일)"]
+    subgraph app["CDS Design (Electron · 브라우저 개발 경로 동일)"]
         tree["Confluence 트리<br/>기획서 하나 선택"]
         plan["기획 대화<br/>cwd = 미러"]
         design["화면 대화<br/>cwd = 레포 클론"]
         seg["문서 | 화면<br/>편집기 · 미리보기"]
         daemon["daemon<br/>프로젝트 · 세션 · 미러 · 자격 증명"]
     end
-    repo["연결 레포<br/>drafthouse.json + CLAUDE.md"]
+    repo["연결 레포<br/>cds-design.json + CLAUDE.md"]
     conf["Confluence Cloud"]
     tree --> plan
     tree --> design
@@ -206,32 +206,32 @@ git, no `ANTHROPIC_API_KEY` in the daemon environment. If the connected repo
 declares a private `registry`, the machine needs `read:packages` auth for it
 (the onboarding repo step says so in Korean when it does not).
 
-Everything the tool writes lives under one folder, `~/drafthouse/`:
+Everything the tool writes lives under one folder, `~/cds-design/`:
 
 | Path | What it holds |
 | --- | --- |
-| `~/drafthouse/config/` | `daemon.json` (host/port/token), `projects.json` (the registry), `confluence.json` — all mode 0600, no secrets (those go to the OS store) |
-| `~/drafthouse/projects/<slug>/repo/` | That project's clone of its connected repo |
-| `~/drafthouse/projects/<slug>/confluence/<space>/` | That project's mirror, one folder per space it owns a subtree of (a personal space's `~<accountId>` folds to `_<accountId>`) |
+| `~/cds-design/config/` | `daemon.json` (host/port/token), `projects.json` (the registry), `confluence.json` — all mode 0600, no secrets (those go to the OS store) |
+| `~/cds-design/projects/<slug>/repo/` | That project's clone of its connected repo |
+| `~/cds-design/projects/<slug>/confluence/<space>/` | That project's mirror, one folder per space it owns a subtree of (a personal space's `~<accountId>` folds to `_<accountId>`) |
 
-A pre-projects installation migrates itself on first start: `~/drafthouse/repo`
-and `~/drafthouse/confluence` move under `projects/default/`, and the old
+A pre-projects installation migrates itself on first start: `~/cds-design/repo`
+and `~/cds-design/confluence` move under `projects/default/`, and the old
 `config/repo.json` url becomes that project's. Nothing is re-downloaded.
 
 Useful environment overrides (all optional, all test-driven):
 
 | Variable | Default | What it changes |
 | --- | --- | --- |
-| `DRAFTHOUSE_PROJECTS_SETTINGS` | `~/drafthouse/config/projects.json` | The project registry file |
-| `DRAFTHOUSE_PROJECTS_DIR` | `~/drafthouse/projects` | Where project folders live |
-| `DRAFTHOUSE_REPO_DIR` | `<project>/repo` | The **active** project's clone directory |
-| `DRAFTHOUSE_REPO_URL` | registry | The **active** project's repo url (tests use fixture remotes) |
-| `DRAFTHOUSE_CONFLUENCE_DIR` | `<project>/confluence` | The **active** project's mirror root |
-| `DRAFTHOUSE_CLAUDE_BIN` | auto-detect | Which Claude Code binary to drive |
-| `DRAFTHOUSE_GITHUB_FIXTURE` | unset | Recorded GitHub REST pairs (offline handoff tests) |
-| `DRAFTHOUSE_GITHUB_SLUG` | from the repo url | `owner/repo` a handoff targets; tests clone local bare remotes, which name no GitHub project |
-| `DRAFTHOUSE_CREDENTIAL_STORE` | platform default | `memory` (tests) or `keychain` |
-| `DRAFTHOUSE_EXTRA_PATH` | unset | PATH prefix for repo commands (desktop sets it) |
+| `CDS_DESIGN_PROJECTS_SETTINGS` | `~/cds-design/config/projects.json` | The project registry file |
+| `CDS_DESIGN_PROJECTS_DIR` | `~/cds-design/projects` | Where project folders live |
+| `CDS_DESIGN_REPO_DIR` | `<project>/repo` | The **active** project's clone directory |
+| `CDS_DESIGN_REPO_URL` | registry | The **active** project's repo url (tests use fixture remotes) |
+| `CDS_DESIGN_CONFLUENCE_DIR` | `<project>/confluence` | The **active** project's mirror root |
+| `CDS_DESIGN_CLAUDE_BIN` | auto-detect | Which Claude Code binary to drive |
+| `CDS_DESIGN_GITHUB_FIXTURE` | unset | Recorded GitHub REST pairs (offline handoff tests) |
+| `CDS_DESIGN_GITHUB_SLUG` | from the repo url | `owner/repo` a handoff targets; tests clone local bare remotes, which name no GitHub project |
+| `CDS_DESIGN_CREDENTIAL_STORE` | platform default | `memory` (tests) or `keychain` |
+| `CDS_DESIGN_EXTRA_PATH` | unset | PATH prefix for repo commands (desktop sets it) |
 
 ## Authoring a connected repo
 
@@ -272,21 +272,21 @@ tests.
 
 ```bash
 # dev run of the packaged code path
-pnpm --filter @drafthouse/desktop dev
+pnpm --filter @cds-design/desktop dev
 
 # bundle portable runtimes, then an unpacked app
 node packages/desktop/scripts/bundle-runtimes.mjs
-pnpm --filter @drafthouse/desktop pack        # release/mac-arm64/Drafthouse.app
+pnpm --filter @cds-design/desktop pack        # release/mac-arm64/CDS Design.app
 
 # installers: dmg + zip (mac, ad-hoc signed), nsis (win)
-pnpm --filter @drafthouse/desktop dist
+pnpm --filter @cds-design/desktop dist
 ```
 
 The desktop app is mac-exercised today: ad-hoc signing (`identity: "-"`,
 no certificate), `codesign -v` clean, and the packaged binary passes the same
 smoke as dev. The Windows target (NSIS, MinGit bundling) is config-complete
 and built by CI on every release. Mac self-update (download zip → sha256 →
-swap `/Applications/Drafthouse.app`) is implemented behind an
+swap `/Applications/CDS Design.app`) is implemented behind an
 `app.isPackaged` guard; the check flow is proven against a local feed
 fixture.
 
@@ -330,7 +330,7 @@ pnpm test:confluence-unit # offline — storage↔markdown lossless round-trips,
 pnpm test:projects        # offline — two projects on two subtrees of one space, overlap refused, activation re-points the tree, registry survives a restart
 pnpm test:repo            # offline — clone/pull/install-skip/preview lifecycle over a local bare remote
 pnpm test:confluence      # offline — mirror clone/pull/push/conflict through the real daemon socket + fixture transport, plus outside-write normalization and 신규 pages in the tree
-pnpm test:publish         # offline — save gates, failing check → session brief, its own drafthouse/* branch with main untouched, build gates only the handoff, PR → merged → new cycle
+pnpm test:publish         # offline — save gates, failing check → session brief, its own cds-design/* branch with main untouched, build gates only the handoff, PR → merged → new cycle
 pnpm test:publish-ui      # offline — browser: 저장 검토 → 저장 → the branch reaches the remote, the base does not
 pnpm test:editor-ui       # offline — TipTap typing → normalized mirror file, 원문, locks, quote chip, 3-way conflict → resolve mine → 게시 → 기획→디자인 handoff
 pnpm test:settings        # offline — theme/preferences; opens with no daemon at all
@@ -350,14 +350,14 @@ at once — L1 unit suites, L2 offline daemon-socket e2e, L3 the five browser
 suites (each on its own fixed port, sequential inside the lane), L4 the two
 real-Claude suites. Per-lane logs land in `.test-logs/` (gitignored);
 `pnpm test:sequential` runs the identical suite set one at a time if you
-prefer. The browser suites need `pnpm --filter @drafthouse/web build` (or a
+prefer. The browser suites need `pnpm --filter @cds-design/web build` (or a
 full `pnpm build`) first.
 
 The fixture design, one paragraph: Confluence interactions replay recorded
 request/response pairs (`packages/daemon/test/fixtures/confluence/`) through
 the same transport interface production uses, consumed strictly in order —
 which is what makes version-conflict simulation and PUT-body assertions real;
-git remotes are bare repositories seeded with a minimal `drafthouse.json` app;
+git remotes are bare repositories seeded with a minimal `cds-design.json` app;
 the Claude CLI is a stub script wherever no model turn is the subject.
 
 ## Packages

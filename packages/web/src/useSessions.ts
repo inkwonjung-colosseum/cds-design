@@ -8,7 +8,7 @@ import type {
   SessionSelectors,
   SessionSummary,
   Workspace,
-} from "@drafthouse/protocol";
+} from "@cds-design/protocol";
 import { EMPTY_SESSION, type Daemon, type SessionView } from "./daemon-client";
 import type { Attachment } from "./Composer";
 import { settleTransitions } from "./session-activity";

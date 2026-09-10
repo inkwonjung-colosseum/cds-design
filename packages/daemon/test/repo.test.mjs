@@ -4,7 +4,7 @@
  * offline.
  *
  * These cover the parts that decide what the planner ends up with: what a
- * repo's drafthouse.json may declare, how the workspace moves through its
+ * repo's cds-design.json may declare, how the workspace moves through its
  * phases, how an attached document is named on disk, how the PAT is kept out
  * of urls and errors, how workspace trust is recorded, and how the two
  * failure modes a planner cannot debug (no pnpm, no registry token) are
@@ -20,9 +20,9 @@ import { join } from "node:path";
 import {
   authenticatedUrl,
   extraPathPrefix,
-  parseDrafthouseConfig,
+  parseCdsDesignConfig,
   parseUnifiedDiff,
-  readDrafthouseConfig,
+  readCdsDesignConfig,
   saveSpecFiles,
   specFileName,
   trustWorkspace,
@@ -41,11 +41,11 @@ function workdir(prefix) {
 }
 
 // ---------------------------------------------------------------------------
-// drafthouse.json contract
+// cds-design.json contract
 // ---------------------------------------------------------------------------
 
-test("a full drafthouse.json parses into its typed shape", () => {
-  const config = parseDrafthouseConfig(
+test("a full cds-design.json parses into its typed shape", () => {
+  const config = parseCdsDesignConfig(
     JSON.stringify({
       install: "pnpm install",
       check: "pnpm check",
@@ -61,46 +61,46 @@ test("a full drafthouse.json parses into its typed shape", () => {
   assert.deepEqual(config.registry, { host: "npm.pkg.github.com", scope: "@colosseumcoinckr" });
 });
 
-test("a minimal drafthouse.json needs only preview", () => {
-  const config = parseDrafthouseConfig('{"preview":{"command":"node server.mjs","port":3000}}');
+test("a minimal cds-design.json needs only preview", () => {
+  const config = parseCdsDesignConfig('{"preview":{"command":"node server.mjs","port":3000}}');
   assert.equal(config.install, undefined);
   assert.equal(config.registry, undefined);
   assert.deepEqual(config.preview, { command: "node server.mjs", port: 3000 });
 });
 
 test("validation errors are Korean, name the field, and say what it should be", () => {
-  assert.throws(() => parseDrafthouseConfig("{}"), /preview가 없습니다/);
+  assert.throws(() => parseCdsDesignConfig("{}"), /preview가 없습니다/);
   assert.throws(
-    () => parseDrafthouseConfig('{"preview":{"port":5274}}'),
+    () => parseCdsDesignConfig('{"preview":{"port":5274}}'),
     /preview\.command가 없습니다/,
   );
   assert.throws(
-    () => parseDrafthouseConfig('{"preview":{"command":"pnpm dev"}}'),
+    () => parseCdsDesignConfig('{"preview":{"command":"pnpm dev"}}'),
     /preview\.port가 잘못되었습니다.*1~65535/s,
   );
   for (const port of [0, 65536, "5274", 5274.5]) {
     assert.throws(
-      () => parseDrafthouseConfig(JSON.stringify({ preview: { command: "x", port } })),
+      () => parseCdsDesignConfig(JSON.stringify({ preview: { command: "x", port } })),
       /preview\.port가 잘못되었습니다/,
       `port ${JSON.stringify(port)} must be rejected`,
     );
   }
   assert.throws(
-    () => parseDrafthouseConfig('{"install":3,"preview":{"command":"x","port":1}}'),
+    () => parseCdsDesignConfig('{"install":3,"preview":{"command":"x","port":1}}'),
     /install는 실행할 명령을 문자열로 적어야 합니다/,
   );
   assert.throws(
-    () => parseDrafthouseConfig('{"registry":{},"preview":{"command":"x","port":1}}'),
+    () => parseCdsDesignConfig('{"registry":{},"preview":{"command":"x","port":1}}'),
     /registry는 \{ "host", "scope" \} 형태여야 합니다/,
   );
-  assert.throws(() => parseDrafthouseConfig("{not json"), /drafthouse\.json을 해석할 수 없습니다/);
-  assert.throws(() => parseDrafthouseConfig("[]"), /drafthouse\.json은 객체여야 합니다/);
+  assert.throws(() => parseCdsDesignConfig("{not json"), /cds-design\.json을 해석할 수 없습니다/);
+  assert.throws(() => parseCdsDesignConfig("[]"), /cds-design\.json은 객체여야 합니다/);
 });
 
-test("a repo without drafthouse.json says so instead of guessing", () => {
+test("a repo without cds-design.json says so instead of guessing", () => {
   const root = workdir("hub-repo-empty-");
   try {
-    assert.throws(() => readDrafthouseConfig(root), /drafthouse\.json이 없습니다/);
+    assert.throws(() => readCdsDesignConfig(root), /cds-design\.json이 없습니다/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -391,11 +391,11 @@ test("a rename reports the new path and no phantom trailing line", () => {
 // Bundled-runtime PATH prefix (desktop app)
 // ---------------------------------------------------------------------------
 
-test("DRAFTHOUSE_EXTRA_PATH is prepended to PATH, deduplicated, on both separators", () => {
+test("CDS_DESIGN_EXTRA_PATH is prepended to PATH, deduplicated, on both separators", () => {
   const env = { PATH: "/usr/bin:/bin:/usr/local/bin" };
   assert.equal(
-    extraPathPrefix("/Applications/Drafthouse.app/Contents/Resources/bin", env),
-    ["/Applications/Drafthouse.app/Contents/Resources/bin", "/usr/bin", "/bin", "/usr/local/bin"].join(":"),
+    extraPathPrefix("/Applications/CDS Design.app/Contents/Resources/bin", env),
+    ["/Applications/CDS Design.app/Contents/Resources/bin", "/usr/bin", "/bin", "/usr/local/bin"].join(":"),
     "the bundled runtime wins over whatever the machine has",
   );
   assert.equal(extraPathPrefix("/usr/bin", env), "/usr/bin:/bin:/usr/local/bin", "no duplicates");
@@ -551,7 +551,7 @@ test("a private-registry rejection is told apart from an ordinary install failur
 
 test("trusting the repo clone keeps the rest of ~/.claude.json intact", () => {
   const home = workdir("hub-trust-");
-  const root = join(home, "drafthouse", "repo");
+  const root = join(home, "cds-design", "repo");
   mkdirSync(root, { recursive: true });
   writeFileSync(
     join(home, ".claude.json"),
@@ -574,17 +574,17 @@ test("trusting the repo clone keeps the rest of ~/.claude.json intact", () => {
 
 test("trust survives a missing config and never rewrites a corrupt one", () => {
   const fresh = workdir("hub-trust-fresh-");
-  trustWorkspace(join(fresh, "drafthouse", "repo"), fresh);
+  trustWorkspace(join(fresh, "cds-design", "repo"), fresh);
   assert.equal(
     JSON.parse(readFileSync(join(fresh, ".claude.json"), "utf8")).projects[
-      join(fresh, "drafthouse", "repo")
+      join(fresh, "cds-design", "repo")
     ].hasTrustDialogAccepted,
     true,
   );
 
   const broken = workdir("hub-trust-broken-");
   writeFileSync(join(broken, ".claude.json"), "{ not json");
-  trustWorkspace(join(broken, "drafthouse", "repo"), broken);
+  trustWorkspace(join(broken, "cds-design", "repo"), broken);
   assert.equal(readFileSync(join(broken, ".claude.json"), "utf8"), "{ not json");
   rmSync(fresh, { recursive: true, force: true });
   rmSync(broken, { recursive: true, force: true });
@@ -611,7 +611,7 @@ async function registryFixture(dir, home) {
     registry: { host: "npm.pkg.github.test", scope: "@leaktest" },
   });
   const npmrc = join(home, ".npmrc");
-  process.env.DRAFTHOUSE_NPMRC = npmrc;
+  process.env.CDS_DESIGN_NPMRC = npmrc;
   writeFileSync(npmrc, "registry=https://registry.npmjs.org/\n");
   return { fixture, npmrc };
 }
@@ -647,7 +647,7 @@ test("B1: a registry repo saves with no .npmrc and no PAT — creds stay user-le
     const localTree = await promisifiedRun("git", ["-C", join(dir, "work"), "ls-tree", "-r", "--name-only", "HEAD"]);
     assert.ok(!localTree.split("\n").includes(".npmrc"));
   } finally {
-    delete process.env.DRAFTHOUSE_NPMRC;
+    delete process.env.CDS_DESIGN_NPMRC;
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -690,7 +690,7 @@ test("F4: a save commits exactly the reviewed paths — gate-written files stay 
   }
 });
 
-test("F5: a save re-reads drafthouse.json — a freshly edited gate is the one that runs", async () => {
+test("F5: a save re-reads cds-design.json — a freshly edited gate is the one that runs", async () => {
   const dir = workdir("hub-publish-config-");
   try {
     const fixture = await createFixtureRepo({
@@ -708,9 +708,9 @@ test("F5: a save re-reads drafthouse.json — a freshly edited gate is the one t
 
     // Swap the clone's gate AFTER sync cached the config: publish must run
     // what is on disk now, not the cached copy.
-    const drafthouse = JSON.parse(readFileSync(join(dir, "work", "drafthouse.json"), "utf8"));
-    drafthouse.check = "node -e \"console.error('NEWGATE-RAN'); process.exit(7)\"";
-    writeFileSync(join(dir, "work", "drafthouse.json"), `${JSON.stringify(drafthouse, null, 2)}\n`);
+    const config = JSON.parse(readFileSync(join(dir, "work", "cds-design.json"), "utf8"));
+    config.check = "node -e \"console.error('NEWGATE-RAN'); process.exit(7)\"";
+    writeFileSync(join(dir, "work", "cds-design.json"), `${JSON.stringify(config, null, 2)}\n`);
 
     writeFileSync(join(dir, "work", "index.html"), "<p>게이트 확인</p>\n");
     const status = await workspace.save({ message: "게이트" });
@@ -725,3 +725,4 @@ test("F5: a save re-reads drafthouse.json — a freshly edited gate is the one t
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 const promisifiedRun = async (command, args) => (await promisify(execFileCb)(command, args)).stdout;
+

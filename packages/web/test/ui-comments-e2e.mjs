@@ -66,7 +66,7 @@ const repoRoot = resolve(here, "..", "..", "..");
 const daemonEntry = join(repoRoot, "packages", "daemon", "dist", "index.js");
 const webDist = join(repoRoot, "packages", "web", "dist");
 const source = join(repoRoot, "connected-repo");
-const DIR = join(tmpdir(), "drafthouse-comments-e2e");
+const DIR = join(tmpdir(), "cds-design-comments-e2e");
 const CLONE = join(DIR, "clone");
 const PORT = 5400;
 
@@ -102,8 +102,8 @@ async function waitFor(predicate, timeoutMs, label) {
 }
 
 async function main() {
-  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @drafthouse/web build");
-  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @drafthouse/daemon build");
+  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @cds-design/web build");
+  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @cds-design/daemon build");
   if (!existsSync(join(source, "node_modules"))) {
     throw new Error("connected-repo dependencies missing. Run: cd connected-repo && pnpm install");
   }
@@ -113,34 +113,37 @@ async function main() {
   mkdirSync(DIR, { recursive: true });
   await run("git", ["clone", "--quiet", source, CLONE]);
   const previewPort = await freePort();
-  const drafthouse = JSON.parse(readFileSync(join(CLONE, "drafthouse.json"), "utf8"));
-  drafthouse.install = "true"; // deps are shared; the suite is about the overlay
-  drafthouse.preview = {
+  const config = JSON.parse(readFileSync(join(CLONE, "cds-design.json"), "utf8"));
+  config.install = "true"; // deps are shared; the suite is about the overlay
+  config.preview = {
     command: `./node_modules/.bin/next dev -p ${previewPort}`,
     port: previewPort,
   };
-  writeFileSync(join(CLONE, "drafthouse.json"), `${JSON.stringify(drafthouse, null, 2)}\n`);
+  writeFileSync(join(CLONE, "cds-design.json"), `${JSON.stringify(config, null, 2)}\n`);
   symlinkSync(join(source, "node_modules"), join(CLONE, "node_modules"));
+  // registry.gen.ts is gitignored, so a fresh clone cannot compile until the
+  // repo's own generator runs — the same step its dev/build scripts do first.
+  await run("node", ["scripts/gen-registry.mjs", "--quiet"], { cwd: CLONE });
 
   const env = {
     ...process.env,
-    DRAFTHOUSE_PORT: String(await freePort()),
-    DRAFTHOUSE_REPO_DIR: CLONE,
-    DRAFTHOUSE_REPO_URL: source,
+    CDS_DESIGN_PORT: String(await freePort()),
+    CDS_DESIGN_REPO_DIR: CLONE,
+    CDS_DESIGN_REPO_URL: source,
     // Same isolation as every other suite: the registry belongs to this run.
-    DRAFTHOUSE_PROJECTS_SETTINGS: join(DIR, "projects.json"),
-    DRAFTHOUSE_PROJECTS_DIR: join(DIR, "projects"),
-    DRAFTHOUSE_CLAUDE_BIN: writeSlowStubClaude(join(DIR, "bin")),
-    DRAFTHOUSE_CREDENTIAL_STORE: "memory",
-    DRAFTHOUSE_CONFLUENCE_SITE: "https://example.atlassian.net",
-    DRAFTHOUSE_CONFLUENCE_EMAIL: "dev@example.com",
-    DRAFTHOUSE_CONFLUENCE_TOKEN: "comments-e2e",
-    DRAFTHOUSE_CONFLUENCE_DIR: join(DIR, "mirror"),
-    DRAFTHOUSE_CONFLUENCE_SETTINGS: join(DIR, "confluence.json"),
+    CDS_DESIGN_PROJECTS_SETTINGS: join(DIR, "projects.json"),
+    CDS_DESIGN_PROJECTS_DIR: join(DIR, "projects"),
+    CDS_DESIGN_CLAUDE_BIN: writeSlowStubClaude(join(DIR, "bin")),
+    CDS_DESIGN_CREDENTIAL_STORE: "memory",
+    CDS_DESIGN_CONFLUENCE_SITE: "https://example.atlassian.net",
+    CDS_DESIGN_CONFLUENCE_EMAIL: "dev@example.com",
+    CDS_DESIGN_CONFLUENCE_TOKEN: "comments-e2e",
+    CDS_DESIGN_CONFLUENCE_DIR: join(DIR, "mirror"),
+    CDS_DESIGN_CONFLUENCE_SETTINGS: join(DIR, "confluence.json"),
     // A mirror whose page path is exactly the `meta.spec` the reference repo's
     // member screens declare: that equality is what the stage badge and the
     // auto-navigate are made of, so the suite has to hold both ends of it.
-    DRAFTHOUSE_CONFLUENCE_FIXTURE: join(repoRoot, "packages", "daemon", "test", "fixtures", "confluence", "screens"),
+    CDS_DESIGN_CONFLUENCE_FIXTURE: join(repoRoot, "packages", "daemon", "test", "fixtures", "confluence", "screens"),
   };
   delete env.ANTHROPIC_API_KEY;
   const daemon = spawn(process.execPath, [daemonEntry], { cwd: CLONE, env, stdio: ["ignore", "pipe", "pipe"] });
@@ -317,7 +320,7 @@ async function main() {
     const envelope = fence ? JSON.parse(fence) : null;
     check(
       "the envelope carries the §6 element identity",
-      envelope?.type === "drafthouse.comments" &&
+      envelope?.type === "cds-design.comments" &&
         envelope.screen === "member/MemberList" &&
         envelope.state === "default" &&
         envelope.items.length === 2 &&
@@ -348,7 +351,7 @@ async function main() {
       !cardText.includes("data-screen") &&
         !cardText.includes("nth-of-type") &&
         !cardText.includes("rect ") &&
-        !cardText.includes("drafthouse.comments"),
+        !cardText.includes("cds-design.comments"),
       cardText.slice(0, 120),
     );
     check(
@@ -361,10 +364,10 @@ async function main() {
     const folded = await card.locator(".machine__body").innerText();
     check(
       "자세히 shows the text Claude actually received",
-      folded.includes("data-screen") && folded.includes("drafthouse.comments"),
+      folded.includes("data-screen") && folded.includes("cds-design.comments"),
       folded.slice(0, 80),
     );
-    check("the marker itself is not shown", !folded.includes("<!-- drafthouse:"));
+    check("the marker itself is not shown", !folded.includes("<!-- cds-design:"));
     // Fold it back: the screenshot below is the artifact this milestone is
     // judged on, and it should show what a planner sees, not the fold.
     await card.getByRole("button", { name: "접기" }).click();
@@ -378,7 +381,7 @@ async function main() {
     const commentTab = await page.locator(".sessiontab--on").innerText();
     check(
       "a machine-authored turn never names the thread it lands in",
-      !commentTab.includes("drafthouse:") &&
+      !commentTab.includes("cds-design:") &&
         !commentTab.includes("화면 수정 요청") &&
         !commentTab.includes("member/MemberList"),
       commentTab.split("\n").join(" "),
@@ -435,7 +438,7 @@ async function main() {
         if (entry.name === "cache") continue;
         walk(path);
       } else if (entry.name.endsWith(".js")) {
-        if (readFileSync(path, "utf8").includes("drafthouse.comments")) leaking.push(path);
+        if (readFileSync(path, "utf8").includes("cds-design.comments")) leaking.push(path);
       }
     }
   };

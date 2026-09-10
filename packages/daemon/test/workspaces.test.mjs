@@ -15,11 +15,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { realpathBestEffort } from "../dist/paths.js";
 import { MIRROR_STATE_FILE, planningRules, writePolicyFor } from "../dist/workspaces.js";
-import { parseDrafthouseConfig } from "../dist/repo.js";
+import { parseCdsDesignConfig } from "../dist/repo.js";
 
 /** Two realpath'd roots that are siblings, as the daemon hands them over. */
 function roots() {
-  const dir = mkdtempSync(join(tmpdir(), "drafthouse-workspaces-"));
+  const dir = mkdtempSync(join(tmpdir(), "cds-design-workspaces-"));
   const repoRoot = join(dir, "repo");
   const mirrorRoot = join(dir, "confluence");
   mkdirSync(join(repoRoot, "src"), { recursive: true });
@@ -106,7 +106,7 @@ test("the planning rules forbid answering in mirror paths (PLAN D9)", () => {
   assert.match(rules, /페이지 제목으로만 문서를 안다/);
   // The card markers are ours; a session that echoes them would render a
   // second card out of Claude's own answer.
-  assert.ok(rules.includes("drafthouse:"), "the rules name the marker to ignore");
+  assert.ok(rules.includes("cds-design:"), "the rules name the marker to ignore");
 });
 
 test("the repo's own 기획 rules ride below the tool's invariants", () => {
@@ -123,21 +123,21 @@ test("the repo's own 기획 rules ride below the tool's invariants", () => {
   );
 });
 
-test("drafthouse.json carries planning.rules, and rejects a malformed one in Korean", () => {
+test("cds-design.json carries planning.rules, and rejects a malformed one in Korean", () => {
   const base = { preview: { command: "pnpm dev", port: 5274 } };
 
-  assert.equal(parseDrafthouseConfig(JSON.stringify(base)).planning, undefined);
+  assert.equal(parseCdsDesignConfig(JSON.stringify(base)).planning, undefined);
   assert.equal(
-    parseDrafthouseConfig(JSON.stringify({ ...base, planning: { rules: "배경 절로 시작" } })).planning
+    parseCdsDesignConfig(JSON.stringify({ ...base, planning: { rules: "배경 절로 시작" } })).planning
       ?.rules,
     "배경 절로 시작",
   );
   assert.throws(
-    () => parseDrafthouseConfig(JSON.stringify({ ...base, planning: { rules: "" } })),
+    () => parseCdsDesignConfig(JSON.stringify({ ...base, planning: { rules: "" } })),
     /planning\.rules/,
   );
   assert.throws(
-    () => parseDrafthouseConfig(JSON.stringify({ ...base, planning: "배경 절로 시작" })),
+    () => parseCdsDesignConfig(JSON.stringify({ ...base, planning: "배경 절로 시작" })),
     /planning/,
   );
 });

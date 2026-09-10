@@ -28,7 +28,7 @@ function loadConfig(): StoredConfig {
   mkdirSync(CONFIG_DIR, { recursive: true });
   // A second daemon on the same machine — an end-to-end suite while the user's
   // own daemon is running — needs a port of its own or it dies on bind.
-  const override = Number(process.env.DRAFTHOUSE_PORT);
+  const override = Number(process.env.CDS_DESIGN_PORT);
   if (existsSync(CONFIG_FILE)) {
     try {
       const stored = JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as StoredConfig;
@@ -118,7 +118,7 @@ async function main(): Promise<void> {
   await server.start();
 
   const url = `ws://${config.host}:${config.port}?token=${config.token}`;
-  console.log(`drafthouse daemon listening on http://${config.host}:${config.port}`);
+  console.log(`cds-design daemon listening on http://${config.host}:${config.port}`);
   console.log(`client url: ${url}`);
   console.log(`config: ${CONFIG_FILE}`);
 

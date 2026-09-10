@@ -24,7 +24,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
 const daemonEntry = join(repoRoot, "packages", "daemon", "dist", "index.js");
 const webDist = join(repoRoot, "packages", "web", "dist");
-const DIR = join(tmpdir(), "drafthouse-publish-ui");
+const DIR = join(tmpdir(), "cds-design-publish-ui");
 const WORK_ROOT = join(DIR, "work");
 const PORT = 5398;
 
@@ -58,7 +58,7 @@ async function remoteHead(remote, ref = "main") {
 /** The branch a save created, as the bare remote sees it. */
 async function cycleBranch(remote) {
   const { stdout } = await run("git", ["--git-dir", remote, "for-each-ref", "--format=%(refname:short)", "refs/heads"]);
-  return stdout.split("\n").map((line) => line.trim()).find((name) => name.startsWith("drafthouse/")) ?? null;
+  return stdout.split("\n").map((line) => line.trim()).find((name) => name.startsWith("cds-design/")) ?? null;
 }
 
 
@@ -73,8 +73,8 @@ async function viaMenu(page, label) {
 }
 
 async function main() {
-  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @drafthouse/web build");
-  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @drafthouse/daemon build");
+  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @cds-design/web build");
+  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @cds-design/daemon build");
 
   rmSync(DIR, { recursive: true, force: true });
   mkdirSync(join(DIR, "claude-config"), { recursive: true });
@@ -84,21 +84,21 @@ async function main() {
 
   const env = {
     ...process.env,
-    DRAFTHOUSE_PORT: String(await freePort()),
-    DRAFTHOUSE_REPO_DIR: WORK_ROOT,
-    DRAFTHOUSE_REPO_URL: fixture.remote,
-    DRAFTHOUSE_REPO_SETTINGS: join(DIR, "settings.json"),
+    CDS_DESIGN_PORT: String(await freePort()),
+    CDS_DESIGN_REPO_DIR: WORK_ROOT,
+    CDS_DESIGN_REPO_URL: fixture.remote,
+    CDS_DESIGN_REPO_SETTINGS: join(DIR, "settings.json"),
     // The registry is what decides which repo and mirror the daemon means, so
     // it lives in the throwaway directory too — left on its default this suite
-    // would write (and migrate) the developer's own ~/drafthouse.
-    DRAFTHOUSE_PROJECTS_SETTINGS: join(DIR, "projects.json"),
-    DRAFTHOUSE_PROJECTS_DIR: join(DIR, "projects"),
+    // would write (and migrate) the developer's own ~/cds-design.
+    CDS_DESIGN_PROJECTS_SETTINGS: join(DIR, "projects.json"),
+    CDS_DESIGN_PROJECTS_DIR: join(DIR, "projects"),
     CLAUDE_CONFIG_DIR: join(DIR, "claude-config"),
-    DRAFTHOUSE_CLAUDE_BIN: writeStubClaude(join(DIR, "bin")),
-    DRAFTHOUSE_CONFLUENCE_SITE: "https://example.atlassian.net",
-    DRAFTHOUSE_CONFLUENCE_EMAIL: "dev@example.com",
-    DRAFTHOUSE_CONFLUENCE_TOKEN: "publish-ui-token",
-    DRAFTHOUSE_CONFLUENCE_FIXTURE: join(
+    CDS_DESIGN_CLAUDE_BIN: writeStubClaude(join(DIR, "bin")),
+    CDS_DESIGN_CONFLUENCE_SITE: "https://example.atlassian.net",
+    CDS_DESIGN_CONFLUENCE_EMAIL: "dev@example.com",
+    CDS_DESIGN_CONFLUENCE_TOKEN: "publish-ui-token",
+    CDS_DESIGN_CONFLUENCE_FIXTURE: join(
       repoRoot,
       "packages",
       "daemon",
@@ -107,7 +107,7 @@ async function main() {
       "confluence",
       "golden",
     ),
-    DRAFTHOUSE_CREDENTIAL_STORE: "memory",
+    CDS_DESIGN_CREDENTIAL_STORE: "memory",
   };
   delete env.ANTHROPIC_API_KEY;
   const daemon = spawn(process.execPath, [daemonEntry], { env, stdio: ["ignore", "pipe", "pipe"] });

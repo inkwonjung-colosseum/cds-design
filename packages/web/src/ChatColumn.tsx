@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { Workspace } from "@drafthouse/protocol";
+import type { Workspace } from "@cds-design/protocol";
 import type { Daemon } from "./daemon-client";
 import type { Sessions } from "./useSessions";
 import { PermissionCard, QuestionCard, Transcript } from "./components";

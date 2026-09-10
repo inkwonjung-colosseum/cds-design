@@ -170,11 +170,11 @@ async function checkProject(deps: OnboardingDeps): Promise<OnboardingStep> {
     );
   }
 
-  const config = repo.drafthouse();
+  const config = repo.cdsDesign();
   if (repo.isCloned() && !config) {
     return fail(
       "project",
-      "레포의 drafthouse.json을 읽을 수 없습니다 — 루트에 올바른 drafthouse.json이 있어야 합니다.",
+      "레포의 cds-design.json을 읽을 수 없습니다 — 루트에 올바른 cds-design.json이 있어야 합니다.",
       { kind: "repo-install", label: "다시 시도" },
     );
   }

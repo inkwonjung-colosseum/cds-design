@@ -30,7 +30,7 @@ import type {
   SessionSelectors,
   SessionSummary,
   Workspace,
-} from "@drafthouse/protocol";
+} from "@cds-design/protocol";
 
 // ---------------------------------------------------------------------------
 // Transcript model: ChatEvents folded into renderable blocks
@@ -350,7 +350,7 @@ export interface DaemonApi {
   diff: () => Promise<DiffFile[]>;
   /**
    * 저장 (PLAN D5): run the gates, then commit and push onto this cycle's own
-   * `drafthouse/…` branch. Progress arrives as `diff.status`.
+   * `cds-design/…` branch. Progress arrives as `diff.status`.
    */
   save: (message?: string, sessionId?: string | null) => Promise<DiffStatus>;
   /**

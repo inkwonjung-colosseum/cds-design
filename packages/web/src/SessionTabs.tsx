@@ -1,4 +1,4 @@
-import type { SessionSummary, Workspace } from "@drafthouse/protocol";
+import type { SessionSummary, Workspace } from "@cds-design/protocol";
 import { CloseIcon } from "./icons";
 import type { Sessions } from "./useSessions";
 

@@ -21,8 +21,8 @@ import type {
   SessionSelectors,
   SessionState,
   Workspace,
-} from "@drafthouse/protocol";
-import { readTurn } from "@drafthouse/protocol";
+} from "@cds-design/protocol";
+import { readTurn } from "@cds-design/protocol";
 import { saveSpecFiles, type SpecFile } from "./repo.js";
 import { containsPath, realpathBestEffort } from "./paths.js";
 import { MessageTranslator } from "./translate.js";

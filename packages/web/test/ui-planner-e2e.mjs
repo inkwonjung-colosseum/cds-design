@@ -26,7 +26,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
 const daemonEntry = join(repoRoot, "packages", "daemon", "dist", "index.js");
 const webDist = join(repoRoot, "packages", "web", "dist");
-const DIR = join(tmpdir(), "drafthouse-planner-e2e");
+const DIR = join(tmpdir(), "cds-design-planner-e2e");
 const WORK_ROOT = join(DIR, "work");
 const SPEC = join(DIR, "2026-09-08-회원관리.md");
 const PORT = 5396;
@@ -76,8 +76,8 @@ function generatedScreens(root) {
 }
 
 async function main() {
-  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @drafthouse/web build");
-  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @drafthouse/daemon build");
+  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @cds-design/web build");
+  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @cds-design/daemon build");
 
   rmSync(DIR, { recursive: true, force: true });
   mkdirSync(DIR, { recursive: true });
@@ -87,19 +87,19 @@ async function main() {
 
   const env = {
     ...process.env,
-    DRAFTHOUSE_PORT: String(DAEMON_PORT),
-    DRAFTHOUSE_REPO_DIR: WORK_ROOT,
-    DRAFTHOUSE_REPO_URL: fixture.remote,
-    DRAFTHOUSE_REPO_SETTINGS: join(DIR, "settings.json"),
+    CDS_DESIGN_PORT: String(DAEMON_PORT),
+    CDS_DESIGN_REPO_DIR: WORK_ROOT,
+    CDS_DESIGN_REPO_URL: fixture.remote,
+    CDS_DESIGN_REPO_SETTINGS: join(DIR, "settings.json"),
     // Same isolation as every other suite: the registry belongs to this run.
-    DRAFTHOUSE_PROJECTS_SETTINGS: join(DIR, "projects.json"),
-    DRAFTHOUSE_PROJECTS_DIR: join(DIR, "projects"),
+    CDS_DESIGN_PROJECTS_SETTINGS: join(DIR, "projects.json"),
+    CDS_DESIGN_PROJECTS_DIR: join(DIR, "projects"),
     // Onboarding-gate seeds: Confluence is env-configured against fixtures,
     // so all four §8 steps pass (repo stays a non-blocking warn until cloned).
-    DRAFTHOUSE_CONFLUENCE_SITE: "https://example.atlassian.net",
-    DRAFTHOUSE_CONFLUENCE_EMAIL: "dev@example.com",
-    DRAFTHOUSE_CONFLUENCE_TOKEN: "planner-e2e-token",
-    DRAFTHOUSE_CONFLUENCE_FIXTURE: join(
+    CDS_DESIGN_CONFLUENCE_SITE: "https://example.atlassian.net",
+    CDS_DESIGN_CONFLUENCE_EMAIL: "dev@example.com",
+    CDS_DESIGN_CONFLUENCE_TOKEN: "planner-e2e-token",
+    CDS_DESIGN_CONFLUENCE_FIXTURE: join(
       repoRoot,
       "packages",
       "daemon",
@@ -108,7 +108,7 @@ async function main() {
       "confluence",
       "golden",
     ),
-    DRAFTHOUSE_CREDENTIAL_STORE: "memory",
+    CDS_DESIGN_CREDENTIAL_STORE: "memory",
   };
   delete env.ANTHROPIC_API_KEY;
   const daemon = spawn(process.execPath, [daemonEntry], { env, stdio: ["ignore", "pipe", "pipe"] });

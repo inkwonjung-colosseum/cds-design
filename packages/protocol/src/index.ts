@@ -254,7 +254,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   /**
    * Idempotent bootstrap of the connected repo: clone when missing, pull,
    * install when the dependency hash moved, start the preview command
-   * declared in `drafthouse.json`. Resolves when it settles; progress arrives
+   * declared in `cds-design.json`. Resolves when it settles; progress arrives
    * as `repo.status`.
    */
   z.object({ ...withId, type: z.literal("repo.sync") }),
@@ -362,7 +362,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   }),
   /**
    * 저장 (PLAN D5): gate, commit and push the reviewed worktree diff onto the
-   * project's own `drafthouse/…` branch, created on the first save of a cycle.
+   * project's own `cds-design/…` branch, created on the first save of a cycle.
    * The base branch is never written to — a developer receives this work as a
    * pull request, not as a push past them.
    */
@@ -650,14 +650,14 @@ export interface RepoStatus {
   detail: string | null;
   /** Preview origin once the declared preview port accepts connections. */
   previewUrl: string | null;
-  /** Port declared in the repo's `drafthouse.json`. */
+  /** Port declared in the repo's `cds-design.json`. */
   previewPort: number | null;
   /** Configured remote url, without any embedded credentials. */
   url: string | null;
   /** Whether a PAT is stored daemon-side. The value never crosses the wire. */
   patConfigured: boolean;
   /**
-   * The `drafthouse/…` branch this cycle's work lives on, or `null` before the
+   * The `cds-design/…` branch this cycle's work lives on, or `null` before the
    * first 저장 of a cycle. The base branch is never checked out for writing.
    */
   branch: string | null;
@@ -833,7 +833,7 @@ export interface DocLock {
  * of this shape (connected-repo/src/preview-bridge/types.ts) — the two repos
  * are kept in sync by hand, and both files say so.
  */
-export interface DrafthouseCommentTarget {
+export interface CdsDesignCommentTarget {
   /** React component display name, falling back to the tag name. */
   component: string;
   /** The element's own text (direct text nodes), trimmed and capped. */
@@ -845,11 +845,11 @@ export interface DrafthouseCommentTarget {
 }
 
 /** A single comment (DESIGN §6 v1: click, comment, send — nothing else). */
-export interface DrafthouseComment {
-  type: "drafthouse.comment";
+export interface CdsDesignComment {
+  type: "cds-design.comment";
   screen: string;
   state: string;
-  element: DrafthouseCommentTarget;
+  element: CdsDesignCommentTarget;
   comment: string;
 }
 
@@ -857,16 +857,16 @@ export interface DrafthouseComment {
  * What the preview app posts to window.parent when the planner sends the
  * batch: one envelope for all pins, then the overlay clears them.
  *
- *     { type: "drafthouse.comments", screen, state,
+ *     { type: "cds-design.comments", screen, state,
  *       items: [{ element, comment }, …] }
  *
  * The hub accepts it only from the preview iframe (source + origin checked).
  */
-export interface DrafthouseCommentsEnvelope {
-  type: "drafthouse.comments";
+export interface CdsDesignCommentsEnvelope {
+  type: "cds-design.comments";
   screen: string;
   state: string;
-  items: Array<{ element: DrafthouseCommentTarget; comment: string }>;
+  items: Array<{ element: CdsDesignCommentTarget; comment: string }>;
 }
 
 /**
@@ -878,7 +878,7 @@ export interface DrafthouseCommentsEnvelope {
  * breaks when a space is re-keyed, and it would make the tool's storage the
  * repo's business.
  */
-export interface DrafthouseScreen {
+export interface CdsDesignScreen {
   /** Route the preview app serves it at, e.g. `/member/MemberList`. */
   route: string;
   /** What the 기획서 calls it. */
@@ -894,9 +894,9 @@ export interface DrafthouseScreen {
  * parses the repo's code, so this is the only way it can offer a screen picker
  * — and the only reason it can badge a 기획서 as having a screen at all.
  */
-export interface DrafthouseScreensEnvelope {
-  type: "drafthouse.screens";
-  screens: DrafthouseScreen[];
+export interface CdsDesignScreensEnvelope {
+  type: "cds-design.screens";
+  screens: CdsDesignScreen[];
 }
 
 /**
@@ -908,8 +908,8 @@ export interface DrafthouseScreensEnvelope {
  * post then lands at a tool that is provably already listening. Every
  * ordering is covered and neither side waits on the other.
  */
-export interface DrafthouseScreensRequestEnvelope {
-  type: "drafthouse.screens?";
+export interface CdsDesignScreensRequestEnvelope {
+  type: "cds-design.screens?";
 }
 
 /**
@@ -917,8 +917,8 @@ export interface DrafthouseScreensRequestEnvelope {
  * Sent when the planner picks a 기획서 whose screen the repo declares, or taps
  * a state chip. The preview app routes; the tool does not touch its url.
  */
-export interface DrafthouseNavigateEnvelope {
-  type: "drafthouse.navigate";
+export interface CdsDesignNavigateEnvelope {
+  type: "cds-design.navigate";
   route: string;
   /** Omitted or null means the screen's default. */
   state?: string | null;

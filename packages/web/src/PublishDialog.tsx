@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ConfluenceReview } from "@drafthouse/protocol";
+import type { ConfluenceReview } from "@cds-design/protocol";
 import { CloseIcon } from "./icons";
 
 /**

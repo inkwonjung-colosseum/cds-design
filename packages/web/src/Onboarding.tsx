@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ConfluencePageRef, OnboardingStep } from "@drafthouse/protocol";
+import type { ConfluencePageRef, OnboardingStep } from "@cds-design/protocol";
 import type { Daemon } from "./daemon-client";
 
 /**
@@ -127,7 +127,7 @@ export function Onboarding({
   return (
     <div className="onboarding">
       <header className="onboarding__head">
-        <h1>Drafthouse 시작하기</h1>
+        <h1>CDS Design 시작하기</h1>
         <p className="hint">
           앞의 세 단계는 이 컴퓨터에서 한 번만 확인하면 됩니다. 마지막 프로젝트 단계에서 기획서가 있는
           Confluence 위치와 화면을 만들 레포를 정하면 작업 화면이 열립니다.

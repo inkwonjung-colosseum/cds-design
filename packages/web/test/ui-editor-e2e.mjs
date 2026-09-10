@@ -29,16 +29,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
 const daemonEntry = join(repoRoot, "packages", "daemon", "dist", "index.js");
 const webDist = join(repoRoot, "packages", "web", "dist");
-const DIR = join(tmpdir(), "drafthouse-editor-e2e");
+const DIR = join(tmpdir(), "cds-design-editor-e2e");
 const MIRROR = join(DIR, "mirror");
 const FIXTURES = join(repoRoot, "packages", "daemon", "test", "fixtures", "confluence", "editor");
 const PORT = 5399;
 
-process.env.DRAFTHOUSE_CONFLUENCE_DIR = MIRROR;
-process.env.DRAFTHOUSE_CONFLUENCE_SETTINGS = join(DIR, "settings.json");
-process.env.DRAFTHOUSE_PROJECTS_SETTINGS = join(DIR, "projects.json");
-process.env.DRAFTHOUSE_PROJECTS_DIR = join(DIR, "projects");
-process.env.DRAFTHOUSE_CONFLUENCE_FIXTURE = FIXTURES;
+process.env.CDS_DESIGN_CONFLUENCE_DIR = MIRROR;
+process.env.CDS_DESIGN_CONFLUENCE_SETTINGS = join(DIR, "settings.json");
+process.env.CDS_DESIGN_PROJECTS_SETTINGS = join(DIR, "projects.json");
+process.env.CDS_DESIGN_PROJECTS_DIR = join(DIR, "projects");
+process.env.CDS_DESIGN_CONFLUENCE_FIXTURE = FIXTURES;
 
 const results = [];
 function check(name, passed, detail = "") {
@@ -72,8 +72,8 @@ async function waitFor(predicate, timeoutMs, label) {
 }
 
 async function main() {
-  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @drafthouse/web build");
-  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @drafthouse/daemon build");
+  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @cds-design/web build");
+  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @cds-design/daemon build");
 
   rmSync(DIR, { recursive: true, force: true });
   mkdirSync(join(DIR, "claude-config"), { recursive: true });
@@ -81,25 +81,25 @@ async function main() {
 
   const env = {
     ...process.env,
-    DRAFTHOUSE_PORT: String(await freePort()),
-    DRAFTHOUSE_CONFLUENCE_DIR: MIRROR,
-    DRAFTHOUSE_CONFLUENCE_SETTINGS: join(DIR, "settings.json"),
+    CDS_DESIGN_PORT: String(await freePort()),
+    CDS_DESIGN_CONFLUENCE_DIR: MIRROR,
+    CDS_DESIGN_CONFLUENCE_SETTINGS: join(DIR, "settings.json"),
     // Same isolation as every other suite: the registry belongs to this run.
-    DRAFTHOUSE_PROJECTS_SETTINGS: join(DIR, "projects.json"),
-    DRAFTHOUSE_PROJECTS_DIR: join(DIR, "projects"),
-    DRAFTHOUSE_CONFLUENCE_FIXTURE: FIXTURES,
+    CDS_DESIGN_PROJECTS_SETTINGS: join(DIR, "projects.json"),
+    CDS_DESIGN_PROJECTS_DIR: join(DIR, "projects"),
+    CDS_DESIGN_CONFLUENCE_FIXTURE: FIXTURES,
     CLAUDE_CONFIG_DIR: join(DIR, "claude-config"),
     // A stubbed CLI keeps the onboarding gate green without touching the
     // real Claude login (this suite runs no model turns).
-    DRAFTHOUSE_CLAUDE_BIN: writeStubClaude(join(DIR, "bin")),
-    DRAFTHOUSE_CREDENTIAL_STORE: "memory",
+    CDS_DESIGN_CLAUDE_BIN: writeStubClaude(join(DIR, "bin")),
+    CDS_DESIGN_CREDENTIAL_STORE: "memory",
     // Onboarding-gate seeds: a reachable (never cloned) repo url keeps the
     // repo step at a non-blocking warn; Confluence is configured up front so
     // its step passes before the browser connects.
-    DRAFTHOUSE_REPO_URL: fixture.remote,
-    DRAFTHOUSE_CONFLUENCE_SITE: "https://example.atlassian.net",
-    DRAFTHOUSE_CONFLUENCE_EMAIL: "dev@example.com",
-    DRAFTHOUSE_CONFLUENCE_TOKEN: "editor-e2e-token",
+    CDS_DESIGN_REPO_URL: fixture.remote,
+    CDS_DESIGN_CONFLUENCE_SITE: "https://example.atlassian.net",
+    CDS_DESIGN_CONFLUENCE_EMAIL: "dev@example.com",
+    CDS_DESIGN_CONFLUENCE_TOKEN: "editor-e2e-token",
   };
   delete env.ANTHROPIC_API_KEY;
   const daemon = spawn(process.execPath, [daemonEntry], { env, stdio: ["ignore", "pipe", "pipe"] });

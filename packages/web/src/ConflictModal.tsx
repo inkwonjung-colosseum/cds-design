@@ -1,4 +1,4 @@
-import type { ConfluenceConflict } from "@drafthouse/protocol";
+import type { ConfluenceConflict } from "@cds-design/protocol";
 import { CloseIcon } from "./icons";
 
 /**

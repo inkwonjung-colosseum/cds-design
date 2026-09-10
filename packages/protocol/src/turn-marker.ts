@@ -10,7 +10,7 @@
  *
  * The turn carries a marker on its first line:
  *
- *     <!-- drafthouse:comments {"screen":"member/MemberList",…} -->
+ *     <!-- cds-design:comments {"screen":"member/MemberList",…} -->
  *     화면 수정 요청 2건 — …
  *
  * An HTML comment, because it has to survive three trips without a sidecar to
@@ -75,7 +75,7 @@ export interface MarkedTurn {
  * line or it is not a marker. A turn whose BODY happens to contain the string
  * must not be reinterpreted from the middle.
  */
-const MARKER = /^<!--\s*drafthouse:([a-z]+)\s+(\{[^\n]*\})\s*-->\n?/;
+const MARKER = /^<!--\s*cds-design:([a-z]+)\s+(\{[^\n]*\})\s*-->\n?/;
 
 function isKind(value: string): value is TurnMarkerKind {
   return (KINDS as readonly string[]).includes(value);
@@ -87,7 +87,7 @@ function isKind(value: string): value is TurnMarkerKind {
  */
 export function markTurn(marker: TurnMarker, body: string): string {
   const { kind, ...data } = marker;
-  return `<!-- drafthouse:${kind} ${JSON.stringify(data)} -->\n${body}`;
+  return `<!-- cds-design:${kind} ${JSON.stringify(data)} -->\n${body}`;
 }
 
 function str(value: unknown, fallback = ""): string {

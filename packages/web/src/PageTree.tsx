@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   ConfluencePhase,
-  DrafthouseScreen,
+  CdsDesignScreen,
   ConfluenceStatus,
   DocSummary,
-} from "@drafthouse/protocol";
+} from "@cds-design/protocol";
 import type { Daemon } from "./daemon-client";
 import { pageMark } from "./stage";
 import { timeAgo } from "./format";
 
-const COLLAPSED_KEY = "drafthouse.pagetree.collapsed";
+const COLLAPSED_KEY = "cds-design.pagetree.collapsed";
 
 /**
  * The space/page tree (DESIGN §4.1): one collapsible section per mirrored
@@ -46,7 +46,7 @@ export function PageTree({
    * for a moment after launch — the alternative is claiming a stage nothing
    * has confirmed.
    */
-  screens: DrafthouseScreen[];
+  screens: CdsDesignScreen[];
 }) {
   const [pagesBySpace, setPagesBySpace] = useState<Array<{ space: string; pages: DocSummary[] }>>([]);
   const [query, setQuery] = useState("");

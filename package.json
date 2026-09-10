@@ -1,5 +1,5 @@
 {
-  "name": "drafthouse",
+  "name": "cds-design",
   "private": true,
   "version": "0.1.0",
   "description": "Turns a planning document into working screens built from the company design system, in a chat a planner can use. Each user runs their own daemon and signs in with their own Claude subscription.",
@@ -7,9 +7,9 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "dev:daemon": "pnpm --filter @drafthouse/daemon dev",
-    "dev:web": "pnpm --filter @drafthouse/web dev",
-    "doctor": "pnpm --filter @drafthouse/daemon doctor",
+    "dev:daemon": "pnpm --filter @cds-design/daemon dev",
+    "dev:web": "pnpm --filter @cds-design/web dev",
+    "doctor": "pnpm --filter @cds-design/daemon doctor",
     "test:daemon": "node packages/daemon/test/e2e.mjs",
     "test": "node scripts/test-parallel.mjs",
     "test:sequential": "pnpm test:unit && pnpm test:onboard-unit && pnpm test:confluence-unit && pnpm test:projects && pnpm test:repo && pnpm test:confluence && pnpm test:publish && pnpm test:publish-ui && pnpm test:editor-ui && pnpm test:settings && pnpm test:onboarding && pnpm test:onboarding-ui && pnpm test:daemon && pnpm test:planner && pnpm test:comments-ui && pnpm test:desktop-unit",

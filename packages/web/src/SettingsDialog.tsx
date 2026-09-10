@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { DaemonStatus, EffortLevel, PermissionMode } from "@drafthouse/protocol";
-import { RELEASES_FEED_URL, checkForUpdate, type UpdateCheckResult } from "@drafthouse/protocol";
+import type { DaemonStatus, EffortLevel, PermissionMode } from "@cds-design/protocol";
+import { RELEASES_FEED_URL, checkForUpdate, type UpdateCheckResult } from "@cds-design/protocol";
 import type { Daemon } from "./daemon-client";
 import { CloseIcon } from "./icons";
 import {
@@ -153,14 +153,14 @@ export function SettingsDialog({
   /**
    * 수동 업데이트 확인(DESIGN §7): 데스크톱 다리가 있으면 그것으로,
    * 브라우저에서는 같은 공유 로직을 window.fetch 로 돌린다 — 로직은
-   * @drafthouse/protocol 의 update 모듈 하나다.
+   * @cds-design/protocol 의 update 모듈 하나다.
    */
   const checkUpdate = async () => {
     setCheckingUpdate(true);
     setUpdateError(null);
     try {
-      const bridge = (window as { drafthouseDesktop?: { updateCheck: () => Promise<UpdateCheckResult> } })
-        .drafthouseDesktop;
+      const bridge = (window as { cdsDesignDesktop?: { updateCheck: () => Promise<UpdateCheckResult> } })
+        .cdsDesignDesktop;
       if (bridge) {
         const result = await bridge.updateCheck();
         if ("error" in result && result.error) throw new Error(String(result.error));

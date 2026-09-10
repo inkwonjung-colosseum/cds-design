@@ -1,4 +1,4 @@
-import type { DrafthouseScreen } from "@drafthouse/protocol";
+import type { CdsDesignScreen } from "@cds-design/protocol";
 
 /**
  * What the 넘기기 dialog opens on (PLAN D5).
@@ -20,7 +20,7 @@ import type { DrafthouseScreen } from "@drafthouse/protocol";
  */
 export function handoffDraft(
   projectName: string,
-  screens: DrafthouseScreen[],
+  screens: CdsDesignScreen[],
   pageIdOf: (specPath: string) => string | null,
 ): { title: string; body: string } {
   return {
@@ -32,7 +32,7 @@ export function handoffDraft(
 }
 
 function bodyFor(
-  screens: DrafthouseScreen[],
+  screens: CdsDesignScreen[],
   pageIdOf: (specPath: string) => string | null,
 ): string {
   const lines: string[] = [];

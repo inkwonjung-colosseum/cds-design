@@ -1,5 +1,5 @@
 import { deleteSession, getSessionInfo, getSessionMessages, listSessions } from "@anthropic-ai/claude-agent-sdk";
-import type { ChatEvent, SessionState, SessionSummary, Workspace } from "@drafthouse/protocol";
+import type { ChatEvent, SessionState, SessionSummary, Workspace } from "@cds-design/protocol";
 import {
   NEW_DESIGN_TITLE,
   NEW_PLANNING_TITLE,

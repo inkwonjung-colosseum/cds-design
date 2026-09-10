@@ -4,7 +4,7 @@
  *
  * The transport interface exists so tests can serve recorded golden fixtures
  * (packages/daemon/test/fixtures/confluence/) instead of the network; the
- * daemon also selects that transport when DRAFTHOUSE_CONFLUENCE_FIXTURE points
+ * daemon also selects that transport when CDS_DESIGN_CONFLUENCE_FIXTURE points
  * at a fixture directory. No code path here talks to anything but the
  * transport it was given.
  *
@@ -338,7 +338,7 @@ export class ConfluenceClient {
     content: Uint8Array;
     comment?: string;
   }): Promise<AttachmentRef> {
-    const boundary = `drafthouse-${Date.now().toString(16)}`;
+    const boundary = `cds-design-${Date.now().toString(16)}`;
     const parts: Uint8Array[] = [];
     const push = (text: string) => parts.push(new TextEncoder().encode(text));
 
@@ -348,7 +348,7 @@ export class ConfluenceClient {
     parts.push(input.content);
     push(`\r\n--${boundary}\r\n`);
     push(`Content-Disposition: form-data; name="comment"\r\n\r\n`);
-    push(input.comment ?? "Drafthouse");
+    push(input.comment ?? "CDS Design");
     push(`\r\n--${boundary}--\r\n`);
 
     const length = parts.reduce((total, part) => total + part.byteLength, 0);

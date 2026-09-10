@@ -14,11 +14,11 @@
  * optimistic-locking fields a hand edit must not touch, and how a brand-new
  * page is spelled before 게시 creates it remotely. Everything domain-shaped —
  * how this team writes a 기획서, its vocabulary, its sections — is the
- * connected repo's decision and arrives as `drafthouse.json`'s
+ * connected repo's decision and arrives as `cds-design.json`'s
  * `planning.rules`, appended below the invariants.
  */
 
-import type { Workspace } from "@drafthouse/protocol";
+import type { Workspace } from "@cds-design/protocol";
 import { sep } from "node:path";
 import { containsPath } from "./paths.js";
 import type { WriteDecision, WritePolicy } from "./session.js";
@@ -57,7 +57,7 @@ export function writePolicyFor(
 const INVARIANTS = `**모든 문장은 한국어로 쓴다.** 작업 중간에 흘리는 진행 설명도 기획자 화면에 그대로
 보이므로 한국어여야 한다.
 
-여기는 Drafthouse의 **기획 작업 공간**이다. 작업 폴더는 Confluence 스페이스의 로컬
+여기는 CDS Design의 **기획 작업 공간**이다. 작업 폴더는 Confluence 스페이스의 로컬
 미러이고, 폴더 하나가 스페이스 하나(\`<스페이스키>/\`), 파일 하나가 페이지 하나다.
 파일을 고치면 기획자가 편집기에서 바로 보고, 기획자가 **게시**를 누르면 Confluence로
 올라간다. 화면(코드)은 여기서 만들지 않는다 — 그것은 같은 기획서의 화면 대화가 하는 일이다.
@@ -125,7 +125,7 @@ parentPageId: null
 - **파일 경로를 쓰지 않는다.** \`ENG/회원 관리 기획서.md\` 대신 \`회원 관리 기획서\`라고 쓴다.
   미러 경로는 파일을 읽고 쓸 때만 필요한 것이고, 기획자는 페이지 제목으로만 문서를 안다.
   절을 가리킬 때는 그 절의 제목을 쓴다.
-- \`<!-- drafthouse:… -->\`로 시작하는 줄은 도구가 붙인 표시다. 읽을 필요도, 답변에
+- \`<!-- cds-design:… -->\`로 시작하는 줄은 도구가 붙인 표시다. 읽을 필요도, 답변에
   옮겨 적을 필요도 없다.
 - 기획자가 말한 것과 다르게 쓴 부분이 있으면 무엇을 왜 그렇게 했는지 한 줄로
 - 게시는 기획자가 누른다. 직접 올리려 하지 않는다.`;

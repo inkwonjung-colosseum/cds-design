@@ -15,7 +15,7 @@ import { deriveStage, pageMark, STAGES, type StageInput } from "../src/stage.ts"
 
 const PATH = "ENG/회원 관리 기획서.md";
 
-const page = (over: Partial<import("@drafthouse/protocol").DocSummary> = {}) => ({
+const page = (over: Partial<import("@cds-design/protocol").DocSummary> = {}) => ({
   path: PATH,
   title: "회원 관리 기획서",
   pageId: "1926987901",
@@ -35,13 +35,13 @@ const screen = (spec: string | null = PATH) => ({
 });
 
 const handoff = (
-  over: Partial<import("@drafthouse/protocol").HandoffStatus> = {},
-): import("@drafthouse/protocol").HandoffStatus => ({
+  over: Partial<import("@cds-design/protocol").HandoffStatus> = {},
+): import("@cds-design/protocol").HandoffStatus => ({
   number: 1,
   url: "https://github.com/org/repo/pull/1",
   title: "회원 관리",
   state: "open",
-  branch: "drafthouse/20260910-1",
+  branch: "cds-design/20260910-1",
   pageIds: ["1926987901"],
   ...over,
 });
@@ -90,7 +90,7 @@ test("a screen exists and the clone is dirty: save it", () => {
 
 test("saved and clean: hand it over", () => {
   const derived = deriveStage(
-    at({ screens: [screen()], pendingChanges: 0, branch: "drafthouse/20260910-1" }),
+    at({ screens: [screen()], pendingChanges: 0, branch: "cds-design/20260910-1" }),
   );
   assert.equal(derived.id, "save");
   assert.equal(derived.primary?.action, "handoff");
@@ -98,7 +98,7 @@ test("saved and clean: hand it over", () => {
 
 test("handed over: the button re-reads the developer's answer", () => {
   const derived = deriveStage(
-    at({ screens: [screen()], branch: "drafthouse/20260910-1", handoff: handoff() }),
+    at({ screens: [screen()], branch: "cds-design/20260910-1", handoff: handoff() }),
   );
   assert.equal(derived.id, "handoff");
   assert.equal(derived.primary?.action, "refreshHandoff");

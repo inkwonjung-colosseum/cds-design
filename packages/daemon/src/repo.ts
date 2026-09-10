@@ -21,8 +21,8 @@ import type {
   HandoffStatus,
   RepoPhase,
   RepoStatus,
-} from "@drafthouse/protocol";
-import { markTurn } from "@drafthouse/protocol";
+} from "@cds-design/protocol";
+import { markTurn } from "@cds-design/protocol";
 import {
   currentPlatform,
   detectsRegistryAuthFailure,
@@ -33,26 +33,26 @@ import { REPO_PAT_ITEM, mergeNpmrc, npmrcPath, type CredentialStore } from "./cr
 
 /**
  * The connected repo workspace: a clone of the repo the planner pointed the
- * daemon at, driven by that repo's own `drafthouse.json` (install/check/build
+ * daemon at, driven by that repo's own `cds-design.json` (install/check/build
  * commands, preview command + port, optional private registry). The daemon
  * clones and pulls it, runs its commands, and frames its preview server —
  * what the preview renders is entirely the repo's business.
  */
 
-const CONFIG_FILE = "drafthouse.json";
+const CONFIG_FILE = "cds-design.json";
 /** Reinstall marker, kept inside `.git/` so it travels with the clone only. */
-const INSTALL_MARKER = "drafthouse-install-hash";
+const INSTALL_MARKER = "cds-design-install-hash";
 const READY_TIMEOUT_MS = 30_000;
 const DETAIL_THROTTLE_MS = 200;
 /** Commit message when the planner approves without writing one. */
-const DEFAULT_COMMIT_MESSAGE = "Drafthouse 화면 변경";
+const DEFAULT_COMMIT_MESSAGE = "CDS Design 화면 변경";
 /** PR title when the planner sends the handoff without editing it. */
-const DEFAULT_HANDOFF_TITLE = "Drafthouse 화면 전달";
+const DEFAULT_HANDOFF_TITLE = "CDS Design 화면 전달";
 /**
  * Every branch this tool creates lives under one prefix, so a developer can
  * tell at a glance which branches a planner made and which are theirs.
  */
-const BRANCH_PREFIX = "drafthouse";
+const BRANCH_PREFIX = "cds-design";
 /** How many output lines a failed gate quotes back to people and Claude. */
 const GATE_OUTPUT_TAIL_LINES = 30;
 
@@ -104,20 +104,20 @@ export const REPO_URL_MISSING_DETAIL =
   "연결 레포 주소가 설정되지 않았습니다 — 설정에서 레포 주소를 넣어 주세요.";
 
 // ---------------------------------------------------------------------------
-// drafthouse.json contract
+// cds-design.json contract
 // ---------------------------------------------------------------------------
 
-export interface DrafthouseRegistry {
+export interface CdsDesignRegistry {
   host: string;
   scope: string;
 }
 
-export interface DrafthouseConfig {
+export interface CdsDesignConfig {
   install?: string;
   check?: string;
   build?: string;
   preview: { command: string; port: number };
-  registry?: DrafthouseRegistry;
+  registry?: CdsDesignRegistry;
   /**
    * What the repo wants a 기획 session to know — document conventions,
    * vocabulary, the shape a 기획서 takes on this team. The daemon appends it
@@ -128,42 +128,42 @@ export interface DrafthouseConfig {
 }
 
 /**
- * Parses and validates a repo's `drafthouse.json`. Every rejection names the
+ * Parses and validates a repo's `cds-design.json`. Every rejection names the
  * field and what it should be, in Korean: the planner is the one who has to
  * act on it, and "invalid config" is not actionable.
  */
-export function parseDrafthouseConfig(source: string): DrafthouseConfig {
+export function parseCdsDesignConfig(source: string): CdsDesignConfig {
   let raw: unknown;
   try {
     raw = JSON.parse(source);
   } catch (error) {
     throw new Error(
-      `drafthouse.json을 해석할 수 없습니다: ${error instanceof Error ? error.message : String(error)}`,
+      `cds-design.json을 해석할 수 없습니다: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("drafthouse.json은 객체여야 합니다");
+    throw new Error("cds-design.json은 객체여야 합니다");
   }
   const config = raw as Record<string, unknown>;
 
   for (const key of ["install", "check", "build"] as const) {
     const value = config[key];
     if (value !== undefined && (typeof value !== "string" || value.trim() === "")) {
-      throw new Error(`drafthouse.json의 ${key}는 실행할 명령을 문자열로 적어야 합니다`);
+      throw new Error(`cds-design.json의 ${key}는 실행할 명령을 문자열로 적어야 합니다`);
     }
   }
 
   const preview = config.preview;
   if (!preview || typeof preview !== "object" || Array.isArray(preview)) {
-    throw new Error('drafthouse.json에 preview가 없습니다 — { "command", "port" }를 적어야 합니다');
+    throw new Error('cds-design.json에 preview가 없습니다 — { "command", "port" }를 적어야 합니다');
   }
   const { command, port } = preview as Record<string, unknown>;
   if (typeof command !== "string" || command.trim() === "") {
-    throw new Error("drafthouse.json의 preview.command가 없습니다 — 미리보기를 띄울 명령입니다");
+    throw new Error("cds-design.json의 preview.command가 없습니다 — 미리보기를 띄울 명령입니다");
   }
   if (!Number.isInteger(port) || (port as number) < 1 || (port as number) > 65535) {
     throw new Error(
-      "drafthouse.json의 preview.port가 잘못되었습니다 — 1~65535 사이의 포트 번호여야 합니다",
+      "cds-design.json의 preview.port가 잘못되었습니다 — 1~65535 사이의 포트 번호여야 합니다",
     );
   }
 
@@ -171,11 +171,11 @@ export function parseDrafthouseConfig(source: string): DrafthouseConfig {
   let planning: { rules: string } | undefined;
   if (rawPlanning !== undefined) {
     if (!rawPlanning || typeof rawPlanning !== "object" || Array.isArray(rawPlanning)) {
-      throw new Error('drafthouse.json의 planning은 { "rules" } 형태여야 합니다');
+      throw new Error('cds-design.json의 planning은 { "rules" } 형태여야 합니다');
     }
     const rules = (rawPlanning as Record<string, unknown>).rules;
     if (typeof rules !== "string" || rules.trim() === "") {
-      throw new Error("drafthouse.json의 planning.rules는 기획 세션에 줄 규칙을 문자열로 적어야 합니다");
+      throw new Error("cds-design.json의 planning.rules는 기획 세션에 줄 규칙을 문자열로 적어야 합니다");
     }
     planning = { rules };
   }
@@ -198,18 +198,18 @@ export function parseDrafthouseConfig(source: string): DrafthouseConfig {
     typeof registry.scope !== "string" ||
     registry.scope.trim() === ""
   ) {
-    throw new Error('drafthouse.json의 registry는 { "host", "scope" } 형태여야 합니다');
+    throw new Error('cds-design.json의 registry는 { "host", "scope" } 형태여야 합니다');
   }
 
   return { ...common, registry: { host: registry.host, scope: registry.scope } };
 }
 
-export function readDrafthouseConfig(root: string): DrafthouseConfig {
+export function readCdsDesignConfig(root: string): CdsDesignConfig {
   const file = join(root, CONFIG_FILE);
   if (!existsSync(file)) {
-    throw new Error(`drafthouse.json이 없습니다 — 연결 레포 루트에 ${CONFIG_FILE}가 있어야 합니다`);
+    throw new Error(`cds-design.json이 없습니다 — 연결 레포 루트에 ${CONFIG_FILE}가 있어야 합니다`);
   }
-  return parseDrafthouseConfig(readFileSync(file, "utf8"));
+  return parseCdsDesignConfig(readFileSync(file, "utf8"));
 }
 
 // ---------------------------------------------------------------------------
@@ -310,7 +310,7 @@ export class RepoWorkspace {
   private pat: string | null;
   private phase: RepoPhase = "missing";
   private detail: string | null = null;
-  private config: DrafthouseConfig | null = null;
+  private config: CdsDesignConfig | null = null;
   private preview: ChildProcess | null = null;
   private inFlight: Promise<RepoStatus> | null = null;
   private publishing: Promise<DiffStatus> | null = null;
@@ -411,8 +411,8 @@ export class RepoWorkspace {
     this.pat = pat;
   }
 
-  /** The repo's declared private registry, once its drafthouse.json was read. */
-  registry(): DrafthouseRegistry | null {
+  /** The repo's declared private registry, once its cds-design.json was read. */
+  registry(): CdsDesignRegistry | null {
     return this.config?.registry ?? null;
   }
 
@@ -420,7 +420,7 @@ export class RepoWorkspace {
   async status(): Promise<RepoStatus> {
     if (this.isCloned()) {
       try {
-        this.config = readDrafthouseConfig(this.root);
+        this.config = readCdsDesignConfig(this.root);
       } catch {
         // Keep the last known config; the working phases surface parse errors.
       }
@@ -574,11 +574,11 @@ export class RepoWorkspace {
       });
     }
 
-    // Gates can change drafthouse.json or write files between here and the
+    // Gates can change cds-design.json or write files between here and the
     // commit: read the config fresh, and commit exactly the paths the planner
     // approved — never `git add -A`, so a gate's unreviewed output cannot ride
     // along in the save.
-    const config = readDrafthouseConfig(this.root);
+    const config = readCdsDesignConfig(this.root);
     this.config = config;
     if (config.check) {
       this.setDiff({ stage: "gating", gate: "check" });
@@ -693,7 +693,7 @@ export class RepoWorkspace {
       });
     }
 
-    const config = readDrafthouseConfig(this.root);
+    const config = readCdsDesignConfig(this.root);
     this.config = config;
     if (config.build) {
       this.setDiff({ stage: "gating", gate: "build" });
@@ -780,14 +780,14 @@ export class RepoWorkspace {
   /**
    * Which GitHub repository the handoff opens a pull request against.
    *
-   * Normally the remote url says so. `DRAFTHOUSE_GITHUB_SLUG` (`owner/repo`)
+   * Normally the remote url says so. `CDS_DESIGN_GITHUB_SLUG` (`owner/repo`)
    * pins it instead, which is what lets the offline suites drive the real
    * handoff path: their remote is a local bare repository, so nothing in the
    * url could name a GitHub project. Same test-seam rule as
-   * `DRAFTHOUSE_REPO_URL` — it exists for tests and is documented as such.
+   * `CDS_DESIGN_REPO_URL` — it exists for tests and is documented as such.
    */
   private repoSlug(): { owner: string; repo: string } | null {
-    const pinned = process.env.DRAFTHOUSE_GITHUB_SLUG;
+    const pinned = process.env.CDS_DESIGN_GITHUB_SLUG;
     if (pinned) {
       const [owner, repo] = pinned.split("/");
       if (owner && repo) return { owner, repo };
@@ -829,9 +829,9 @@ export class RepoWorkspace {
     try {
       identity = (await this.git(["config", "user.email"])).trim()
         ? []
-        : ["-c", "user.name=Drafthouse", "-c", "user.email=drafthouse@localhost"];
+        : ["-c", "user.name=CDS Design", "-c", "user.email=cds-design@localhost"];
     } catch {
-      identity = ["-c", "user.name=Drafthouse", "-c", "user.email=drafthouse@localhost"];
+      identity = ["-c", "user.name=CDS Design", "-c", "user.email=cds-design@localhost"];
     }
     await this.git([...identity, "commit", "-m", message]);
   }
@@ -865,7 +865,7 @@ export class RepoWorkspace {
         await this.git(["pull", "--ff-only"]);
       }
 
-      const config = readDrafthouseConfig(this.root);
+      const config = readCdsDesignConfig(this.root);
       this.config = config;
       const installed = await this.installIfNeeded(config);
 
@@ -895,10 +895,10 @@ export class RepoWorkspace {
     return existsSync(join(this.root, ".git"));
   }
 
-  /** The repo's drafthouse.json, when the clone has one (onboarding check). */
-  drafthouse(): DrafthouseConfig | null {
+  /** The repo's cds-design.json, when the clone has one (onboarding check). */
+  cdsDesign(): CdsDesignConfig | null {
     try {
-      return readDrafthouseConfig(this.root);
+      return readCdsDesignConfig(this.root);
     } catch {
       return null;
     }
@@ -906,7 +906,7 @@ export class RepoWorkspace {
 
   /** True when the declared install already ran for the current lockfiles. */
   installUpToDate(): boolean {
-    const config = this.drafthouse();
+    const config = this.cdsDesign();
     if (!config?.install) return true;
     if (!existsSync(join(this.root, "node_modules"))) return false;
     return !this.dependenciesMoved();
@@ -921,7 +921,7 @@ export class RepoWorkspace {
    * The identity is a content hash of the manifest and lockfiles, recorded
    * inside `.git/` so it belongs to this clone alone.
    */
-  private async installIfNeeded(config: DrafthouseConfig): Promise<boolean> {
+  private async installIfNeeded(config: CdsDesignConfig): Promise<boolean> {
     if (!config.install) return false;
     if (!this.dependenciesMoved()) return false;
 
@@ -971,7 +971,7 @@ export class RepoWorkspace {
     );
   }
 
-  /** A drafthouse command may or may not need pnpm; only demand it when it does. */
+  /** A cds-design command may or may not need pnpm; only demand it when it does. */
   private async requirePnpmIfReferenced(command: string): Promise<void> {
     if (!/\bpnpm\b/.test(command)) return;
     if (!(await resolvePnpmExecutable())) throw new Error(PNPM_MISSING_DETAIL);
@@ -981,7 +981,7 @@ export class RepoWorkspace {
   // Preview server
   // -------------------------------------------------------------------------
 
-  private async startPreview(config: DrafthouseConfig): Promise<void> {
+  private async startPreview(config: CdsDesignConfig): Promise<void> {
     await this.killPreview();
     this.setPhase("starting", null);
     const { command, port } = config.preview;
@@ -996,7 +996,7 @@ export class RepoWorkspace {
     if (await portAccepts(port)) {
       throw new Error(
         `포트 ${port}를 다른 프로그램이 이미 쓰고 있어 미리보기를 켤 수 없습니다 — ` +
-          `그 프로그램을 끄거나 연결 레포의 drafthouse.json에서 preview.port를 바꿔 주세요.`,
+          `그 프로그램을 끄거나 연결 레포의 cds-design.json에서 preview.port를 바꿔 주세요.`,
       );
     }
 
@@ -1032,7 +1032,7 @@ export class RepoWorkspace {
     const windows = currentPlatform() === "win32";
     return {
       cwd: this.root,
-      // drafthouse.json commands are strings ("pnpm dev"), so a shell parses
+      // cds-design.json commands are strings ("pnpm dev"), so a shell parses
       // them. `detached` on POSIX puts the tree in one process group we can
       // signal together when the preview must stop.
       shell: true,
@@ -1045,7 +1045,7 @@ export class RepoWorkspace {
         // The desktop app bundles portable Node/pnpm (and MinGit on Windows)
         // in its resources; those binaries win over whatever the planner's
         // machine happens to have — or not have — on PATH.
-        PATH: extraPathPrefix(process.env.DRAFTHOUSE_EXTRA_PATH),
+        PATH: extraPathPrefix(process.env.CDS_DESIGN_EXTRA_PATH),
       },
     };
   }
@@ -1224,7 +1224,7 @@ export class RepoWorkspace {
 export const GIT_MISSING_DETAIL =
   "git을 찾을 수 없습니다 — git을 설치한 뒤 다시 시도해 주세요.";
 
-/** PATH with DRAFTHOUSE_EXTRA_PATH prepended when the desktop app sets it. */
+/** PATH with CDS_DESIGN_EXTRA_PATH prepended when the desktop app sets it. */
 export function extraPathPrefix(
   extra: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
@@ -1240,7 +1240,7 @@ export function extraPathPrefix(
 }
 
 /** The npm scope form with a leading @, whatever the repo wrote. */
-function scopeOf(registry: DrafthouseRegistry): string {
+function scopeOf(registry: CdsDesignRegistry): string {
   return registry.scope.startsWith("@") ? registry.scope : `@${registry.scope}`;
 }
 
@@ -1372,7 +1372,7 @@ export function trustWorkspace(root: string, home = homedir()): void {
 
   // The CLI rewrites this file whenever a session ends, so replace it in one
   // step rather than leaving a window where it is half written.
-  const temporary = `${configFile}.drafthouse-${process.pid}`;
+  const temporary = `${configFile}.cds-design-${process.pid}`;
   writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   renameSync(temporary, configFile);
 }

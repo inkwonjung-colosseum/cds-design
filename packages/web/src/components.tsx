@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { AskQuestion, TurnMarker } from "@drafthouse/protocol";
-import { readTurn } from "@drafthouse/protocol";
+import type { AskQuestion, TurnMarker } from "@cds-design/protocol";
+import { readTurn } from "@cds-design/protocol";
 import type { Block, PendingPermission, PendingQuestion } from "./daemon-client";
 import { Markdown } from "./Markdown";
 import { CheckIcon, CloseIcon, ShieldIcon, SparkIcon, ChevronRightIcon } from "./icons";

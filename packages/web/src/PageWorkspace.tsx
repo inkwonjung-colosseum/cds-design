@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   ConfluenceReview,
   DocSummary,
-  DrafthouseScreen,
+  CdsDesignScreen,
   HandoffStatus,
   SessionSummary,
   Workspace,
-} from "@drafthouse/protocol";
-import { markTurn } from "@drafthouse/protocol";
+} from "@cds-design/protocol";
+import { markTurn } from "@cds-design/protocol";
 import type { Daemon } from "./daemon-client";
 import { useSessions, type Sessions } from "./useSessions";
 import { ChatColumn } from "./ChatColumn";
@@ -74,7 +74,7 @@ export function PageWorkspace({
    * mounted once — the tree's stage marks say 기획 중 until then rather than
    * guessing.
    */
-  const [screens, setScreens] = useState<DrafthouseScreen[]>([]);
+  const [screens, setScreens] = useState<CdsDesignScreen[]>([]);
   const [active, setActive] = useState<{ workspace: Workspace; sessionId: string } | null>(null);
   /** The two dialogs of the cycle. The stepper opens them; ScreenPanel draws them. */
   const [saveOpen, setSaveOpen] = useState(false);
@@ -350,7 +350,7 @@ export function PageWorkspace({
   /**
    * Which 기획서 a screen was built from, resolved against this project's own
    * page list. The repo names a mirror-relative path and never a Confluence
-   * id — see `DrafthouseScreen.spec` — so the lookup lives here, where the
+   * id — see `CdsDesignScreen.spec` — so the lookup lives here, where the
    * pages are.
    */
   const pageIdOf = useCallback(
@@ -363,7 +363,7 @@ export function PageWorkspace({
    *
    * Whether a screen covers what its 기획서 asked for means reading the
    * 기획서, and how a 기획서 is written is the connected repo's decision, not
-   * ours (`drafthouse.json#planning.rules`). So this asks the 화면 thread,
+   * ours (`cds-design.json#planning.rules`). So this asks the 화면 thread,
    * naming the screens the repo declared and the states they implement, and
    * leaves the verdict in the chat where the planner can argue with it.
    */

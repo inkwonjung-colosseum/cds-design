@@ -6,9 +6,9 @@
  *
  * Layout, one folder per project:
  *
- *   ~/drafthouse/config/projects.json
- *   ~/drafthouse/projects/<slug>/confluence/<space>/   the mirrored subtree
- *   ~/drafthouse/projects/<slug>/repo/                 the clone
+ *   ~/cds-design/config/projects.json
+ *   ~/cds-design/projects/<slug>/confluence/<space>/   the mirrored subtree
+ *   ~/cds-design/projects/<slug>/repo/                 the clone
  *
  * The mirror lives inside the project rather than in one shared folder on
  * purpose: a project owns a SUBTREE of a space, the mirror is flat
@@ -25,8 +25,8 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { HandoffStatus } from "@drafthouse/protocol";
-import { CONFIG_DIR, DRAFTHOUSE_DIR } from "./environment.js";
+import type { HandoffStatus } from "@cds-design/protocol";
+import { CONFIG_DIR, CDS_DESIGN_DIR } from "./environment.js";
 
 /**
  * One Confluence subtree a project owns.
@@ -78,7 +78,7 @@ export interface Project {
 
 /** Every path a project owns. */
 export interface ProjectPaths {
-  /** `~/drafthouse/projects/<slug>` */
+  /** `~/cds-design/projects/<slug>` */
   root: string;
   /** The connected repo's clone. */
   repoRoot: string;
@@ -96,13 +96,13 @@ export const DEFAULT_BASE_BRANCH = "main";
 /** The slug a pre-projects installation migrates into. */
 export const LEGACY_SLUG = "default";
 
-/** `DRAFTHOUSE_PROJECTS_SETTINGS` points a test at a throwaway registry. */
+/** `CDS_DESIGN_PROJECTS_SETTINGS` points a test at a throwaway registry. */
 export function projectsFile(env: NodeJS.ProcessEnv = process.env): string {
-  return env.DRAFTHOUSE_PROJECTS_SETTINGS ?? join(CONFIG_DIR, "projects.json");
+  return env.CDS_DESIGN_PROJECTS_SETTINGS ?? join(CONFIG_DIR, "projects.json");
 }
 
 export function projectsRoot(env: NodeJS.ProcessEnv = process.env): string {
-  return env.DRAFTHOUSE_PROJECTS_DIR ?? join(DRAFTHOUSE_DIR, "projects");
+  return env.CDS_DESIGN_PROJECTS_DIR ?? join(CDS_DESIGN_DIR, "projects");
 }
 
 /** The credential-store item holding a project's repo PAT. */
@@ -119,7 +119,7 @@ export function repoPatItem(slug: string): string {
  *
  * Only path-hostile characters are removed — the same set the mirror's own
  * page filenames drop — because the slug becomes a directory a human will one
- * day stare at, and `~/drafthouse/projects/결제/` is findable where
+ * day stare at, and `~/cds-design/projects/결제/` is findable where
  * `project-2` is not. Every filesystem this ships on stores UTF-8 names, and
  * the mirror already writes `회원 관리 기획서.md` next door.
  *
@@ -286,7 +286,7 @@ function saveProjectsFile(file: ProjectsFile, env: NodeJS.ProcessEnv = process.e
   // No secrets live here (the PAT is in the OS store), but the repo urls are
   // still the user's business: same private mode, same atomic replace as the
   // other settings files.
-  const temporary = `${path}.drafthouse-${process.pid}`;
+  const temporary = `${path}.cds-design-${process.pid}`;
   writeFileSync(temporary, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
   renameSync(temporary, path);
 }
@@ -417,7 +417,7 @@ export class ProjectRegistry {
   /**
    * Where a project's files live.
    *
-   * `DRAFTHOUSE_REPO_DIR` / `DRAFTHOUSE_CONFLUENCE_DIR` override the ACTIVE
+   * `CDS_DESIGN_REPO_DIR` / `CDS_DESIGN_CONFLUENCE_DIR` override the ACTIVE
    * project's two roots and nothing else. That is how the offline suites keep
    * driving fixture remotes and fixture mirrors: they run one project, it is
    * the active one, and the paths they prepared are the paths it uses.
@@ -425,8 +425,8 @@ export class ProjectRegistry {
   paths(slug: string): ProjectPaths {
     const root = join(projectsRoot(this.env), slug);
     const activeOverride = slug === this.file.active;
-    const repoOverride = activeOverride ? this.env.DRAFTHOUSE_REPO_DIR : undefined;
-    const mirrorOverride = activeOverride ? this.env.DRAFTHOUSE_CONFLUENCE_DIR : undefined;
+    const repoOverride = activeOverride ? this.env.CDS_DESIGN_REPO_DIR : undefined;
+    const mirrorOverride = activeOverride ? this.env.CDS_DESIGN_CONFLUENCE_DIR : undefined;
     return {
       root,
       repoRoot: repoOverride ?? join(root, "repo"),
@@ -437,7 +437,7 @@ export class ProjectRegistry {
   /**
    * The remote the active project's workspace should actually talk to.
    *
-   * `DRAFTHOUSE_REPO_URL` wins over the registry for the ACTIVE project, the
+   * `CDS_DESIGN_REPO_URL` wins over the registry for the ACTIVE project, the
    * same rule the two path overrides follow. It is how the offline suites
    * point a project at a fixture remote — and it has to be applied HERE rather
    * than written into the registry, because the registry is what `update()`
@@ -446,7 +446,7 @@ export class ProjectRegistry {
   resolvedRepo(slug: string): ProjectRepo {
     const project = this.get(slug);
     if (!project) throw new Error(`프로젝트를 찾을 수 없습니다: ${slug}`);
-    const override = slug === this.file.active ? cleanString(this.env.DRAFTHOUSE_REPO_URL) : null;
+    const override = slug === this.file.active ? cleanString(this.env.CDS_DESIGN_REPO_URL) : null;
     return override ? { ...project.repo, url: override } : project.repo;
   }
 
@@ -484,17 +484,17 @@ export class ProjectRegistry {
 /**
  * Turns a pre-projects installation into the single project it always was.
  *
- * Two shapes arrive here. A real installation has `~/drafthouse/repo` and
- * `~/drafthouse/confluence`, and those folders MOVE into
+ * Two shapes arrive here. A real installation has `~/cds-design/repo` and
+ * `~/cds-design/confluence`, and those folders MOVE into
  * `projects/default/`. A test (or a dev pointing the daemon at scratch dirs)
- * has `DRAFTHOUSE_REPO_DIR` / `DRAFTHOUSE_CONFLUENCE_DIR` set, and nothing
+ * has `CDS_DESIGN_REPO_DIR` / `CDS_DESIGN_CONFLUENCE_DIR` set, and nothing
  * moves at all: `paths()` keeps handing the active project exactly those
  * directories.
  *
  * Migration reads only sources in the SAME configuration scope as the
  * registry it is filling. A run that redirected the registry
- * (`DRAFTHOUSE_PROJECTS_SETTINGS`, which every offline suite sets) must not
- * inherit the developer's real `~/drafthouse` — that once produced a scratch
+ * (`CDS_DESIGN_PROJECTS_SETTINGS`, which every offline suite sets) must not
+ * inherit the developer's real `~/cds-design` — that once produced a scratch
  * daemon that warm-started a clone of the developer's own remote and reported
  * a project nobody in that run had created.
  *
@@ -505,10 +505,10 @@ export function migrateLegacyLayout(
   env: NodeJS.ProcessEnv,
   mirroredSpaces: readonly string[],
 ): ProjectsFile | null {
-  const scoped = env.DRAFTHOUSE_PROJECTS_SETTINGS !== undefined || env.DRAFTHOUSE_PROJECTS_DIR !== undefined;
-  const legacyRepo = env.DRAFTHOUSE_REPO_DIR ?? (scoped ? null : join(DRAFTHOUSE_DIR, "repo"));
-  const legacyMirror = env.DRAFTHOUSE_CONFLUENCE_DIR ?? (scoped ? null : join(DRAFTHOUSE_DIR, "confluence"));
-  const repoUrl = env.DRAFTHOUSE_REPO_URL ?? legacyRepoUrl(env, scoped);
+  const scoped = env.CDS_DESIGN_PROJECTS_SETTINGS !== undefined || env.CDS_DESIGN_PROJECTS_DIR !== undefined;
+  const legacyRepo = env.CDS_DESIGN_REPO_DIR ?? (scoped ? null : join(CDS_DESIGN_DIR, "repo"));
+  const legacyMirror = env.CDS_DESIGN_CONFLUENCE_DIR ?? (scoped ? null : join(CDS_DESIGN_DIR, "confluence"));
+  const repoUrl = env.CDS_DESIGN_REPO_URL ?? legacyRepoUrl(env, scoped);
   const spaces =
     mirroredSpaces.length > 0 ? mirroredSpaces : legacyMirror ? readMirroredSpaces(legacyMirror) : [];
 
@@ -518,10 +518,10 @@ export function migrateLegacyLayout(
   const target = join(projectsRoot(env), LEGACY_SLUG);
   // With the env overrides in play the legacy paths ARE the project's paths;
   // moving them would break the very run that set them.
-  if (!env.DRAFTHOUSE_REPO_DIR && legacyRepo && existsSync(legacyRepo)) {
+  if (!env.CDS_DESIGN_REPO_DIR && legacyRepo && existsSync(legacyRepo)) {
     moveInto(legacyRepo, join(target, "repo"));
   }
-  if (!env.DRAFTHOUSE_CONFLUENCE_DIR && legacyMirror && existsSync(legacyMirror)) {
+  if (!env.CDS_DESIGN_CONFLUENCE_DIR && legacyMirror && existsSync(legacyMirror)) {
     moveInto(legacyMirror, join(target, "confluence"));
   }
 
@@ -542,7 +542,7 @@ export function migrateLegacyLayout(
 
 /** The url the old single-repo settings file held, if it still exists. */
 function legacyRepoUrl(env: NodeJS.ProcessEnv, scoped: boolean): string | null {
-  const file = env.DRAFTHOUSE_REPO_SETTINGS ?? (scoped ? null : join(CONFIG_DIR, "repo.json"));
+  const file = env.CDS_DESIGN_REPO_SETTINGS ?? (scoped ? null : join(CONFIG_DIR, "repo.json"));
   if (!file) return null;
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
@@ -567,7 +567,7 @@ function readMirroredSpaces(mirrorRoot: string): string[] {
 /**
  * Moves a legacy folder under the project. A rename across devices fails on
  * some setups (a home directory on a different volume than a symlinked
- * `~/drafthouse`); there the migration is skipped rather than half-copied, and
+ * `~/cds-design`); there the migration is skipped rather than half-copied, and
  * the project starts empty — a re-clone, not a loss, because both folders are
  * reproducible from their remotes.
  */

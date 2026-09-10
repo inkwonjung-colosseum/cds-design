@@ -27,7 +27,7 @@ import {
   type Workspace,
   type DocSummary,
   type ConfluenceStatus,
-} from "@drafthouse/protocol";
+} from "@cds-design/protocol";
 import { SessionManager } from "./session-manager.js";
 import { SessionPages } from "./session-pages.js";
 import type { WritePolicy } from "./session.js";
@@ -707,7 +707,7 @@ export class DaemonServer {
    * onboarding fix runs.
    */
   private async mergeRegistryNpmrc(): Promise<void> {
-    const config = this.repo.drafthouse();
+    const config = this.repo.cdsDesign();
     const pat = this.repo.currentPat();
     if (!config?.registry || !pat) return;
     const scope = config.registry.scope.startsWith("@")
@@ -813,7 +813,7 @@ export class DaemonServer {
   private refreshBackgroundPull(): void {
     const active = this.activeOrNull();
     if (!active) return;
-    const interval = Number(process.env.DRAFTHOUSE_BACKGROUND_PULL_MS) || 60_000;
+    const interval = Number(process.env.CDS_DESIGN_BACKGROUND_PULL_MS) || 60_000;
     const mirrored = active.mirror.spaces();
     for (const space of active.mirror.backgroundPullSpaces()) {
       if (!mirrored.includes(space)) active.mirror.stopBackgroundPull(space);
@@ -1130,7 +1130,7 @@ export class DaemonServer {
           ...(workspace === "planning"
             ? // The mirror is a folder of markdown until something says what
               // it is; the repo contributes its own 기획 conventions on top.
-              { systemPromptAppend: planningRules(this.repo.drafthouse()?.planning?.rules ?? null) }
+              { systemPromptAppend: planningRules(this.repo.cdsDesign()?.planning?.rules ?? null) }
             : // The design half reads the 기획서 it is building from; it may
               // not write there without the planner seeing a card.
               { additionalDirectories: [this.confluenceRoot] }),
@@ -1542,7 +1542,7 @@ export function handoffBodyFor(
   siteUrl: string | null,
 ): string {
   const site = siteUrl?.trim().replace(/\/+$/, "") || null;
-  const lines = ["Drafthouse에서 만든 화면입니다. 로직만 붙이면 됩니다.", ""];
+  const lines = ["CDS Design에서 만든 화면입니다. 로직만 붙이면 됩니다.", ""];
   for (const { space, pages } of entries) {
     for (const page of pages) {
       const id = `(pageId: ${page.pageId})`;

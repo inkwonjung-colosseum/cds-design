@@ -88,7 +88,7 @@ export class SessionPages {
     mkdirSync(dirname(this.file), { recursive: true });
     // Atomic replace: a half-written sidecar reads as no attachments at all,
     // which silently scatters every thread in the project.
-    const temporary = `${this.file}.drafthouse-${process.pid}`;
+    const temporary = `${this.file}.cds-design-${process.pid}`;
     writeFileSync(temporary, `${JSON.stringify(this.pages, null, 2)}\n`, { mode: 0o600 });
     renameSync(temporary, this.file);
   }

@@ -4,20 +4,20 @@ import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { app, BrowserWindow, ipcMain, safeStorage } from "electron";
 // 서브패스로 가져온다 — 루트 진입점은 CLI 라 가져오는 순간 실행된다.
-import { DaemonServer } from "@drafthouse/daemon/server";
-import { RELEASES_FEED_URL, checkForUpdate } from "@drafthouse/protocol";
+import { DaemonServer } from "@cds-design/daemon/server";
+import { RELEASES_FEED_URL, checkForUpdate } from "@cds-design/protocol";
 import { SafeStorageCredentialStore } from "./safe-storage-store.js";
 import { planSelfUpdate, verifyDownload } from "./mac-self-update.js";
 
 /**
- * Drafthouse 데스크톱 앱의 메인 프로세스(DESIGN §7):
+ * CDS Design 데스크톱 앱의 메인 프로세스(DESIGN §7):
  * - 데몬을 in-process 로 호스팅한다 — 별도 Node 사이드카가 없다. 포트는
  *   임시 포트, 페어링 토큰은 실행마다 새로 만들어 url 로만 전달한다.
  * - 웹 UI 는 데몬이 직접 정적 서빙한다(webDist). 렌더러는
  *   http://127.0.0.1:<port>/?token=<token> 을 연다 — 연결 화면 없음.
  * - 자격 증명은 safeStorage 저장소를 데몬에 주입한다.
  * - 번들 런타임(포터블 node·pnpm, win 은 MinGit)이 resources 에 있으면
- *   DRAFTHOUSE_EXTRA_PATH 로 데몬에 알려준다(repo.ts 가 PATH 앞에 붙인다).
+ *   CDS_DESIGN_EXTRA_PATH 로 데몬에 알려준다(repo.ts 가 PATH 앞에 붙인다).
  */
 
 let mainWindow: BrowserWindow | null = null;
@@ -31,7 +31,7 @@ app.whenReady().then(async () => {
 
   const resourcesBin = join(process.resourcesPath, "bin");
   const extraPath = existsSync(resourcesBin) ? resourcesBin : undefined;
-  if (extraPath) process.env.DRAFTHOUSE_EXTRA_PATH = extraPath;
+  if (extraPath) process.env.CDS_DESIGN_EXTRA_PATH = extraPath;
   // 데스크톱 앱이 데몬을 감싸므로 데몬의 자식들도 이 프로세스의 PATH 를
   // 물려받는다 — 번들 런타임을 앞에 두고 시작한다.
   if (extraPath) process.env.PATH = `${extraPath}:${process.env.PATH}`;
@@ -53,7 +53,7 @@ app.whenReady().then(async () => {
   mainWindow = new BrowserWindow({
     width: 1680,
     height: 1000,
-    title: "Drafthouse",
+    title: "CDS Design",
     autoHideMenuBar: true,
     webPreferences: {
       // 업데이트 확인 다리 — 이 preload 가 렌더러에 노출하는 전부다.

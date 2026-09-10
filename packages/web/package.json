@@ -1,5 +1,5 @@
 {
-  "name": "@drafthouse/web",
+  "name": "@cds-design/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@drafthouse/protocol": "workspace:*",
+    "@cds-design/protocol": "workspace:*",
     "@tiptap/core": "^3.31.3",
     "@tiptap/extension-image": "^3.31.3",
     "@tiptap/extension-link": "^3.31.3",

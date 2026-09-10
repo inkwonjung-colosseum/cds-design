@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type {
-  DrafthouseCommentsEnvelope,
-  DrafthouseNavigateEnvelope,
-  DrafthouseScreen,
-  DrafthouseScreensEnvelope,
-  DrafthouseScreensRequestEnvelope,
-} from "@drafthouse/protocol";
+  CdsDesignCommentsEnvelope,
+  CdsDesignNavigateEnvelope,
+  CdsDesignScreen,
+  CdsDesignScreensEnvelope,
+  CdsDesignScreensRequestEnvelope,
+} from "@cds-design/protocol";
 import { stateLabel } from "./format";
 
 /** Which screen, in which state, the planner asked to see. */
@@ -32,7 +32,7 @@ type PreviewWidth = "mobile" | "desktop";
  *
  * This is also the postMessage hub for both directions of PLAN D7. Envelopes
  * are accepted strictly from this iframe (source and origin both checked,
- * DESIGN §6) and `drafthouse.navigate` is posted back at the preview's own
+ * DESIGN §6) and `cds-design.navigate` is posted back at the preview's own
  * origin.
  *
  * NAVIGATION IS A PROP, NOT A HANDLE. `target` comes down and `onNavigate`
@@ -63,16 +63,16 @@ export function Preview({
    */
   stoppedDetail?: string | null;
   onRestart: () => void;
-  /** Validated `drafthouse.comments` envelope from the preview app. */
-  onComments: (envelope: DrafthouseCommentsEnvelope) => void;
+  /** Validated `cds-design.comments` envelope from the preview app. */
+  onComments: (envelope: CdsDesignCommentsEnvelope) => void;
   /** Screens the repo declared. Empty until the app speaks — see the toolbar. */
-  screens: DrafthouseScreen[];
+  screens: CdsDesignScreen[];
   /** The screen and state to show, or null while nothing has been asked for. */
   target: PreviewTarget | null;
   /** A toolbar control was used; the caller answers by handing back `target`. */
   onNavigate: (route: string, state: string | null) => void;
-  /** Validated `drafthouse.screens` payload from the preview app. */
-  onScreens: (screens: DrafthouseScreen[]) => void;
+  /** Validated `cds-design.screens` payload from the preview app. */
+  onScreens: (screens: CdsDesignScreen[]) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [width, setWidth] = useState<PreviewWidth>("desktop");
@@ -92,10 +92,10 @@ export function Preview({
       // Only this iframe may speak; anything else in the page is noise.
       if (event.source !== frame.current?.contentWindow) return;
       if (event.origin !== expectedOrigin) return;
-      const data = event.data as DrafthouseCommentsEnvelope | DrafthouseScreensEnvelope | null;
+      const data = event.data as CdsDesignCommentsEnvelope | CdsDesignScreensEnvelope | null;
       if (!data) return;
-      if (data.type === "drafthouse.comments" && Array.isArray(data.items)) onComments(data);
-      if (data.type === "drafthouse.screens" && Array.isArray(data.screens)) onScreens(data.screens);
+      if (data.type === "cds-design.comments" && Array.isArray(data.items)) onComments(data);
+      if (data.type === "cds-design.screens" && Array.isArray(data.screens)) onScreens(data.screens);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -105,8 +105,8 @@ export function Preview({
     if (!url || !target || loads === 0) return;
     const contentWindow = frame.current?.contentWindow;
     if (!contentWindow) return;
-    const envelope: DrafthouseNavigateEnvelope = {
-      type: "drafthouse.navigate",
+    const envelope: CdsDesignNavigateEnvelope = {
+      type: "cds-design.navigate",
       route: target.route,
       state: target.state,
     };
@@ -232,7 +232,7 @@ export function Preview({
             // retries, so the two orderings cover each other: its post lands
             // at a hub that is already listening, and this request catches the
             // case where the app was up before we were.
-            const request: DrafthouseScreensRequestEnvelope = { type: "drafthouse.screens?" };
+            const request: CdsDesignScreensRequestEnvelope = { type: "cds-design.screens?" };
             frame.current?.contentWindow?.postMessage(request, new URL(url).origin);
           }}
         />

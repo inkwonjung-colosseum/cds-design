@@ -7,7 +7,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import Image from "@tiptap/extension-image";
-import type { ConfluenceConflict } from "@drafthouse/protocol";
+import type { ConfluenceConflict } from "@cds-design/protocol";
 import type { Daemon } from "./daemon-client";
 import { ConfluenceBlock } from "./editor/ConfluenceBlock";
 import { renderFrontmatter, splitFrontmatter, type Frontmatter } from "./editor/frontmatter";

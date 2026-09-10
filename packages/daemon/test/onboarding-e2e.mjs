@@ -8,7 +8,7 @@
  * mirrors the picked subtree), the repo fix, and the tab gate opening when
  * every step passes.
  *
- * Nothing here points DRAFTHOUSE_REPO_URL at the fixture remote: this suite
+ * Nothing here points CDS_DESIGN_REPO_URL at the fixture remote: this suite
  * is the one that must see a genuinely first run, so the registry migration
  * finds no legacy repo, no legacy url and no mirrored space, and the daemon
  * comes up with zero projects.
@@ -25,27 +25,27 @@ import { DaemonServer } from "../dist/server.js";
 import { createFixtureRepo, freePort } from "./fixture-repo.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DIR = join(tmpdir(), "drafthouse-onboard-e2e");
+const DIR = join(tmpdir(), "cds-design-onboard-e2e");
 const ONBOARDING_FIXTURES = join(here, "fixtures", "confluence", "onboarding");
 const API_TOKEN = "onboard_e2e_token";
 const REPO_PAT = "onboard_e2e_pat";
 
-process.env.DRAFTHOUSE_CREDENTIAL_STORE = "memory";
-process.env.DRAFTHOUSE_CONFLUENCE_DIR = join(DIR, "mirror");
-process.env.DRAFTHOUSE_CONFLUENCE_SETTINGS = join(DIR, "confluence.json");
-process.env.DRAFTHOUSE_CONFLUENCE_FIXTURE = ONBOARDING_FIXTURES;
-process.env.DRAFTHOUSE_REPO_DIR = join(DIR, "work");
-process.env.DRAFTHOUSE_REPO_SETTINGS = join(DIR, "repo.json");
+process.env.CDS_DESIGN_CREDENTIAL_STORE = "memory";
+process.env.CDS_DESIGN_CONFLUENCE_DIR = join(DIR, "mirror");
+process.env.CDS_DESIGN_CONFLUENCE_SETTINGS = join(DIR, "confluence.json");
+process.env.CDS_DESIGN_CONFLUENCE_FIXTURE = ONBOARDING_FIXTURES;
+process.env.CDS_DESIGN_REPO_DIR = join(DIR, "work");
+process.env.CDS_DESIGN_REPO_SETTINGS = join(DIR, "repo.json");
 // The project registry decides whether this run has a project at all, so it
 // must be this run's own file: on the default path the daemon would write
-// ~/drafthouse/config/projects.json and the next run would start already
+// ~/cds-design/config/projects.json and the next run would start already
 // migrated, from a fixture remote that no longer exists.
-process.env.DRAFTHOUSE_PROJECTS_SETTINGS = join(DIR, "projects.json");
-process.env.DRAFTHOUSE_PROJECTS_DIR = join(DIR, "projects");
+process.env.CDS_DESIGN_PROJECTS_SETTINGS = join(DIR, "projects.json");
+process.env.CDS_DESIGN_PROJECTS_DIR = join(DIR, "projects");
 // B4 wizard wiring: the timer must start for the space the wizard mirrors on
 // its way through `project.create` too — short interval so the regression
 // observes a tick without anybody asking for a pull.
-process.env.DRAFTHOUSE_BACKGROUND_PULL_MS = "120";
+process.env.CDS_DESIGN_BACKGROUND_PULL_MS = "120";
 
 const results = [];
 function check(name, passed, detail = "") {

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  DrafthouseCommentsEnvelope,
-  DrafthouseScreen,
+  CdsDesignCommentsEnvelope,
+  CdsDesignScreen,
   HandoffStatus,
   RepoPhase,
   SessionState,
   TurnMarker,
-} from "@drafthouse/protocol";
-import { markTurn } from "@drafthouse/protocol";
+} from "@cds-design/protocol";
+import { markTurn } from "@cds-design/protocol";
 import type { Daemon } from "./daemon-client";
 import { stateLabel } from "./format";
 import { Preview, type PreviewTarget } from "./Preview";
@@ -202,7 +202,7 @@ export function ScreenPanel({
    */
   specPath?: string | null;
   /** The repo's declared screens, so the shell can badge the page tree (§2.4). */
-  onScreens: (screens: DrafthouseScreen[]) => void;
+  onScreens: (screens: CdsDesignScreen[]) => void;
   /**
    * The page behind a `spec` path, or null when the project does not carry
    * that 기획서. The panel holds mirror paths and the shell holds pageIds; only
@@ -236,7 +236,7 @@ export function ScreenPanel({
    */
   const [syncError, setSyncError] = useState<string | null>(null);
   /** Preview comment pins waiting for Claude's turn to settle (DESIGN §6). */
-  const [commentPins, setCommentPins] = useState<DrafthouseCommentsEnvelope | null>(null);
+  const [commentPins, setCommentPins] = useState<CdsDesignCommentsEnvelope | null>(null);
   /** True once the carrying turn actually ran; pins clear when it settles. */
   const [commentTurnRan, setCommentTurnRan] = useState(false);
   /**
@@ -245,7 +245,7 @@ export function ScreenPanel({
    * old repo that declares nothing and an app that has not booted yet look
    * identical from here.
    */
-  const [screens, setScreens] = useState<DrafthouseScreen[]>([]);
+  const [screens, setScreens] = useState<CdsDesignScreen[]>([]);
   /** The screen and state the preview has been asked to show, or null. */
   const [target, setTarget] = useState<PreviewTarget | null>(null);
   /**
@@ -300,7 +300,7 @@ export function ScreenPanel({
    * moment some screen names it (§2.4).
    */
   const receiveScreens = useCallback(
-    (next: DrafthouseScreen[]) => {
+    (next: CdsDesignScreen[]) => {
       setScreens(next);
       onScreens(next);
     },
@@ -325,7 +325,7 @@ export function ScreenPanel({
    * sees it as the planner's own words (DESIGN §6). Pins stay while the turn
    * runs and clear when it settles.
    */
-  const forwardComments = async (envelope: DrafthouseCommentsEnvelope) => {
+  const forwardComments = async (envelope: CdsDesignCommentsEnvelope) => {
     setCommentPins(envelope);
     setCommentTurnRan(false);
     // The envelope names the screen the way the app routes to it; the card
@@ -400,7 +400,7 @@ export function ScreenPanel({
 }
 
 /** Pins summary shown above the preview until the turn settles. */
-function CommentPinsSummary({ envelope }: { envelope: DrafthouseCommentsEnvelope }) {
+function CommentPinsSummary({ envelope }: { envelope: CdsDesignCommentsEnvelope }) {
   return (
     <div className="pins" data-testid="pins-summary">
       <div className="pins__head">
@@ -429,7 +429,7 @@ function CommentPinsSummary({ envelope }: { envelope: DrafthouseCommentsEnvelope
  * `screenTitle` is what the repo called the screen; the envelope only carries
  * its route-shaped id, and a card is the wrong place to meet one.
  */
-function commentsToTurn(envelope: DrafthouseCommentsEnvelope, screenTitle: string): string {
+function commentsToTurn(envelope: CdsDesignCommentsEnvelope, screenTitle: string): string {
   const marker: TurnMarker = {
     kind: "comments",
     screen: screenTitle,

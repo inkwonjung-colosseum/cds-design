@@ -24,7 +24,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
 const daemonEntry = join(repoRoot, "packages", "daemon", "dist", "index.js");
 const webDist = join(repoRoot, "packages", "web", "dist");
-const DIR = join(tmpdir(), "drafthouse-onboard-ui-e2e");
+const DIR = join(tmpdir(), "cds-design-onboard-ui-e2e");
 const PORT = 5401;
 
 const REPO_PAT = "onboard_ui_pat";
@@ -53,8 +53,8 @@ function serveDist() {
 }
 
 async function main() {
-  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @drafthouse/web build");
-  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @drafthouse/daemon build");
+  if (!existsSync(webDist)) throw new Error("web dist missing. Run: pnpm --filter @cds-design/web build");
+  if (!existsSync(daemonEntry)) throw new Error("daemon dist missing. Run: pnpm --filter @cds-design/daemon build");
 
   rmSync(DIR, { recursive: true, force: true });
   mkdirSync(DIR, { recursive: true });
@@ -62,19 +62,19 @@ async function main() {
 
   const env = {
     ...process.env,
-    DRAFTHOUSE_PORT: String(await freePort()),
-    DRAFTHOUSE_REPO_DIR: join(DIR, "work"),
-    DRAFTHOUSE_REPO_SETTINGS: join(DIR, "repo.json"),
+    CDS_DESIGN_PORT: String(await freePort()),
+    CDS_DESIGN_REPO_DIR: join(DIR, "work"),
+    CDS_DESIGN_REPO_SETTINGS: join(DIR, "repo.json"),
     // The registry decides what "the repo" and "the mirror" mean, so it has to
     // live in the throwaway directory too: a previous run's projects.json
     // would otherwise hand this daemon a deleted fixture remote.
-    DRAFTHOUSE_PROJECTS_SETTINGS: join(DIR, "projects.json"),
-    DRAFTHOUSE_PROJECTS_DIR: join(DIR, "projects"),
+    CDS_DESIGN_PROJECTS_SETTINGS: join(DIR, "projects.json"),
+    CDS_DESIGN_PROJECTS_DIR: join(DIR, "projects"),
     // Deliberately NO repo url and NO confluence credentials: the wizard must
     // block, then unblock through its own inputs.
-    DRAFTHOUSE_CONFLUENCE_DIR: join(DIR, "mirror"),
-    DRAFTHOUSE_CONFLUENCE_SETTINGS: join(DIR, "confluence.json"),
-    DRAFTHOUSE_CONFLUENCE_FIXTURE: join(
+    CDS_DESIGN_CONFLUENCE_DIR: join(DIR, "mirror"),
+    CDS_DESIGN_CONFLUENCE_SETTINGS: join(DIR, "confluence.json"),
+    CDS_DESIGN_CONFLUENCE_FIXTURE: join(
       repoRoot,
       "packages",
       "daemon",
@@ -83,7 +83,7 @@ async function main() {
       "confluence",
       "onboarding",
     ),
-    DRAFTHOUSE_CREDENTIAL_STORE: "memory",
+    CDS_DESIGN_CREDENTIAL_STORE: "memory",
   };
   delete env.ANTHROPIC_API_KEY;
   const daemon = spawn(process.execPath, [daemonEntry], { env, stdio: ["ignore", "pipe", "pipe"] });

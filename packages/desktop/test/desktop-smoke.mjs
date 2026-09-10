@@ -6,7 +6,7 @@
  * unpackaged electron-builder output instead (the packaged smoke).
  *
  * Usage: node packages/desktop/test/desktop-smoke.mjs [appPath]
- * Run: node packages/desktop/test/desktop-smoke.mjs release/mac-arm64/Drafthouse.app/Contents/MacOS/Drafthouse
+ * Run: node packages/desktop/test/desktop-smoke.mjs release/mac-arm64/CDS Design.app/Contents/MacOS/CDS Design
  */
 import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -38,10 +38,10 @@ async function main() {
   let appPath = packagedApp;
 
   if (!packagedApp) {
-    run("pnpm", ["--filter", "@drafthouse/protocol", "build"], repo);
-    run("pnpm", ["--filter", "@drafthouse/daemon", "build"], repo);
-    run("pnpm", ["--filter", "@drafthouse/web", "build"], repo);
-    run("pnpm", ["--filter", "@drafthouse/desktop", "build"], repo);
+    run("pnpm", ["--filter", "@cds-design/protocol", "build"], repo);
+    run("pnpm", ["--filter", "@cds-design/daemon", "build"], repo);
+    run("pnpm", ["--filter", "@cds-design/web", "build"], repo);
+    run("pnpm", ["--filter", "@cds-design/desktop", "build"], repo);
     const webDist = join(desktop, "web-dist");
     rmSync(webDist, { recursive: true, force: true });
     mkdirSync(webDist, { recursive: true });
@@ -52,7 +52,7 @@ async function main() {
   }
 
   // 데스크톱은 자기 userData 아래에서만 흔적을 남긴다(키체인·설정 오염 방지).
-  const userData = join(tmpdir(), `drafthouse-desktop-smoke-${Date.now()}`);
+  const userData = join(tmpdir(), `cds-design-desktop-smoke-${Date.now()}`);
   const electronBinary = packagedApp
     ? undefined
     : join(desktop, "node_modules", ".bin", "electron");
@@ -62,9 +62,9 @@ async function main() {
     env: {
       ...process.env,
       // 온보딩 게이트를 통과시킬 stub — 실제 로그인/네트워크 없이.
-      DRAFTHOUSE_CLAUDE_BIN: stubClaude(join(userData, "bin")),
-      DRAFTHOUSE_CREDENTIAL_STORE: undefined,
-      DRAFTHOUSE_DESKTOP_SMOKE: "1",
+      CDS_DESIGN_CLAUDE_BIN: stubClaude(join(userData, "bin")),
+      CDS_DESIGN_CREDENTIAL_STORE: undefined,
+      CDS_DESIGN_DESKTOP_SMOKE: "1",
     },
   });
 
@@ -91,7 +91,7 @@ async function main() {
     await window.waitForSelector(".onboarding", { timeout: 30000 });
     check("a fresh machine lands on the onboarding wizard", (await window.locator(".onboarding").count()) === 1);
 
-    const bridge = await window.evaluate(() => Boolean(window.drafthouseDesktop));
+    const bridge = await window.evaluate(() => Boolean(window.cdsDesignDesktop));
     check("the desktop update bridge is exposed to the renderer", bridge);
 
     const errors = [];

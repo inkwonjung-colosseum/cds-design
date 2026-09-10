@@ -57,11 +57,11 @@ async function buildHarness(overrides) {
   const root = join(dir, "repo");
   // Every credential lookup has to land in this harness's own temp dir: left
   // on the default path `loadConfluenceSettings` reads the developer's real
-  // ~/drafthouse/config/confluence.json, and a check that should have been
+  // ~/cds-design/config/confluence.json, and a check that should have been
   // offline goes out to their actual site.
-  const env = { DRAFTHOUSE_CONFLUENCE_SETTINGS: join(dir, "confluence.json"), ...overrides };
+  const env = { CDS_DESIGN_CONFLUENCE_SETTINGS: join(dir, "confluence.json"), ...overrides };
   const transport = createConfluenceTransport({ ...process.env, ...env });
-  const token = env.DRAFTHOUSE_CONFLUENCE_TOKEN ?? null;
+  const token = env.CDS_DESIGN_CONFLUENCE_TOKEN ?? null;
   const clientFactory = () => {
     const stored = confluenceCredentials(loadConfluenceSettings(env), env, token);
     if (!confluenceConfigured(stored)) return null;
@@ -76,8 +76,8 @@ async function buildHarness(overrides) {
   };
   const repo = new RepoWorkspace({
     root,
-    url: env.DRAFTHOUSE_REPO_URL ?? null,
-    pat: env.DRAFTHOUSE_REPO_PAT ?? null,
+    url: env.CDS_DESIGN_REPO_URL ?? null,
+    pat: env.CDS_DESIGN_REPO_PAT ?? null,
     onStatus: () => undefined,
   });
   const confluence = new SyncEngine({
@@ -92,14 +92,14 @@ test("every step fails in Korean on an empty machine, with fixes where offered",
   const dir = workdir("hub-onboard-empty-");
   const previousPath = process.env.PATH;
   const previousHome = process.env.HOME;
-  const previousClaudeBin = process.env.DRAFTHOUSE_CLAUDE_BIN;
+  const previousClaudeBin = process.env.CDS_DESIGN_CLAUDE_BIN;
   try {
     // A genuinely empty machine: nothing on PATH, no HOME-owned installs.
     // (The resolver probes well-known absolute locations, so only a real
     // HOME/PATH override makes claude and git unfindable.)
     process.env.HOME = dir;
     process.env.PATH = join(dir, "empty-bin");
-    delete process.env.DRAFTHOUSE_CLAUDE_BIN;
+    delete process.env.CDS_DESIGN_CLAUDE_BIN;
     const repo = new RepoWorkspace({ root: join(dir, "repo"), url: null, onStatus: () => undefined });
     const confluence = new SyncEngine({ root: join(dir, "mirror"), clientFactory: () => null, onStatus: () => undefined });
     const steps = await runOnboardingChecks({ repo, confluence, confluenceClient: () => null });
@@ -125,8 +125,8 @@ test("every step fails in Korean on an empty machine, with fixes where offered",
     else process.env.PATH = previousPath;
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
-    if (previousClaudeBin === undefined) delete process.env.DRAFTHOUSE_CLAUDE_BIN;
-    else process.env.DRAFTHOUSE_CLAUDE_BIN = previousClaudeBin;
+    if (previousClaudeBin === undefined) delete process.env.CDS_DESIGN_CLAUDE_BIN;
+    else process.env.CDS_DESIGN_CLAUDE_BIN = previousClaudeBin;
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -215,12 +215,12 @@ test("git passes through the stub and fails with CLT guidance when missing", asy
  */
 test("the project step: unreachable fails, uncloned warns, an empty mirror warns, then it passes", async () => {
   const dir = workdir("hub-onboard-project-");
-  process.env.DRAFTHOUSE_CREDENTIAL_STORE = "memory";
+  process.env.CDS_DESIGN_CREDENTIAL_STORE = "memory";
   try {
     const fixture = await createFixtureRepo({ dir: join(dir, "fixture"), port: await freePort() });
     const harness = await buildHarness({
-      DRAFTHOUSE_REPO_URL: join(dir, "nope.git"),
-      DRAFTHOUSE_CREDENTIAL_STORE: "memory",
+      CDS_DESIGN_REPO_URL: join(dir, "nope.git"),
+      CDS_DESIGN_CREDENTIAL_STORE: "memory",
     });
 
     const unreachable = await runOnboardingChecks({
@@ -237,12 +237,12 @@ test("the project step: unreachable fails, uncloned warns, an empty mirror warns
     // credentials are real from here on: the mirror is what the last two
     // states turn on, so this harness has to be able to clone one.
     const pending = await buildHarness({
-      DRAFTHOUSE_REPO_URL: fixture.remote,
-      DRAFTHOUSE_CREDENTIAL_STORE: "memory",
-      DRAFTHOUSE_CONFLUENCE_SITE: "https://example.atlassian.net",
-      DRAFTHOUSE_CONFLUENCE_EMAIL: "dev@example.com",
-      DRAFTHOUSE_CONFLUENCE_TOKEN: "onboard-token",
-      DRAFTHOUSE_CONFLUENCE_FIXTURE: ONBOARDING,
+      CDS_DESIGN_REPO_URL: fixture.remote,
+      CDS_DESIGN_CREDENTIAL_STORE: "memory",
+      CDS_DESIGN_CONFLUENCE_SITE: "https://example.atlassian.net",
+      CDS_DESIGN_CONFLUENCE_EMAIL: "dev@example.com",
+      CDS_DESIGN_CONFLUENCE_TOKEN: "onboard-token",
+      CDS_DESIGN_CONFLUENCE_FIXTURE: ONBOARDING,
     });
     const deps = {
       repo: pending.repo,
@@ -270,7 +270,7 @@ test("the project step: unreachable fails, uncloned warns, an empty mirror warns
     assert.match(passStep.detail, /^회원 관리 개편 준비됨 — /);
     await pending.repo.stop();
   } finally {
-    delete process.env.DRAFTHOUSE_CREDENTIAL_STORE;
+    delete process.env.CDS_DESIGN_CREDENTIAL_STORE;
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -298,7 +298,7 @@ test("the confluence step: unconfigured fails, credentials alone pass with the s
   const dir = workdir("hub-onboard-conf-");
   try {
     // Unconfigured: fail, Korean reason.
-    const empty = await buildHarness({ DRAFTHOUSE_CONFLUENCE_SETTINGS: join(dir, "settings.json") });
+    const empty = await buildHarness({ CDS_DESIGN_CONFLUENCE_SETTINGS: join(dir, "settings.json") });
     assert.equal(find(await runOnboardingChecks({
       repo: empty.repo, confluence: empty.confluence, confluenceClient: empty.clientFactory,
     }), "confluence").status, "fail");
@@ -307,11 +307,11 @@ test("the confluence step: unconfigured fails, credentials alone pass with the s
     // the whole bar. What is mirrored belongs to a project, and the project
     // gate is where an empty mirror is reported.
     const harness = await buildHarness({
-      DRAFTHOUSE_CONFLUENCE_SETTINGS: join(dir, "settings.json"),
-      DRAFTHOUSE_CONFLUENCE_SITE: "https://example.atlassian.net",
-      DRAFTHOUSE_CONFLUENCE_EMAIL: "dev@example.com",
-      DRAFTHOUSE_CONFLUENCE_TOKEN: "onboard-token",
-      DRAFTHOUSE_CONFLUENCE_FIXTURE: ONBOARDING,
+      CDS_DESIGN_CONFLUENCE_SETTINGS: join(dir, "settings.json"),
+      CDS_DESIGN_CONFLUENCE_SITE: "https://example.atlassian.net",
+      CDS_DESIGN_CONFLUENCE_EMAIL: "dev@example.com",
+      CDS_DESIGN_CONFLUENCE_TOKEN: "onboard-token",
+      CDS_DESIGN_CONFLUENCE_FIXTURE: ONBOARDING,
     });
     const step = find(
       await runOnboardingChecks({
@@ -446,7 +446,7 @@ test("B3: an async spawn error is absorbed, never an unhandled crash", async () 
 
 test("no fixture env → transport is null so the caller builds a per-site FetchTransport", () => {
   const env = { ...process.env };
-  delete env.DRAFTHOUSE_CONFLUENCE_FIXTURE;
+  delete env.CDS_DESIGN_CONFLUENCE_FIXTURE;
   const chosen = createConfluenceTransport(env);
   // A non-null placeholder here shadowed the `?? new FetchTransport(siteUrl)`
   // fallback and every request went to a relative url

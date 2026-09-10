@@ -44,7 +44,7 @@ test("semver comparison orders major, minor, patch", () => {
 });
 
 test("checkForUpdate reads the feed and compares against the current version", async () => {
-  const feed = { version: "0.3.0", notes: "화면 코멘트 지원", url: "https://example/Drafthouse-0.3.0.zip" };
+  const feed = { version: "0.3.0", notes: "화면 코멘트 지원", url: "https://example/cds-design-0.3.0.zip" };
   const fetchLike = async (url) => {
     assert.equal(url, "https://example.test/latest.json");
     return { ok: true, status: 200, json: feed };
@@ -55,7 +55,7 @@ test("checkForUpdate reads the feed and compares against the current version", a
     updateAvailable: true,
     version: "0.3.0",
     notes: "화면 코멘트 지원",
-    url: "https://example/Drafthouse-0.3.0.zip",
+    url: "https://example/cds-design-0.3.0.zip",
   });
 
   const current = await checkForUpdate("0.3.0", "https://example.test/latest.json", fetchLike);
@@ -119,19 +119,19 @@ test("the check flow works against a real local feed server", async () => {
 
 test("the self-update plan names every step and the download target", () => {
   const plan = planSelfUpdate({
-    url: "https://example.test/Drafthouse-0.5.0.zip",
+    url: "https://example.test/cds-design-0.5.0.zip",
     sha256: "ab".repeat(32),
     downloadsDir: "/tmp/downloads",
     version: "0.5.0",
   });
-  assert.equal(plan.zipUrl, "https://example.test/Drafthouse-0.5.0.zip");
-  assert.equal(plan.downloadPath, "/tmp/downloads/Drafthouse-0.5.0.zip");
-  assert.equal(plan.targetApp, "/Applications/Drafthouse.app");
+  assert.equal(plan.zipUrl, "https://example.test/cds-design-0.5.0.zip");
+  assert.equal(plan.downloadPath, "/tmp/downloads/cds-design-0.5.0.zip");
+  assert.equal(plan.targetApp, "/Applications/CDS Design.app");
   assert.deepEqual(plan.steps, [
-    "Drafthouse-0.5.0.zip 내려받기",
+    "cds-design-0.5.0.zip 내려받기",
     "sha256 검증",
     "앱 종료",
-    "/Applications/Drafthouse.app 교체",
+    "/Applications/CDS Design.app 교체",
     "다시 실행",
   ]);
 });
@@ -140,7 +140,7 @@ test("sha256 verification accepts a good file and refuses a bad one", async () =
   const dir = workdir("hub-desktop-sha-");
   try {
     const good = join(dir, "good.zip");
-    const payload = Buffer.from("drafthouse-update-zip-bytes");
+    const payload = Buffer.from("cds-design-update-zip-bytes");
     writeFileSync(good, payload);
     const digest = createHash("sha256").update(payload).digest("hex");
     assert.equal(await sha256OfFile(good), digest, "streamed hash matches node's one-shot");
@@ -223,10 +223,10 @@ test("an undecryptable blob reads as null — a changed keychain key loses nothi
 // bundled-runtime PATH prefix (daemon side, used by the desktop)
 // ---------------------------------------------------------------------------
 
-test("DRAFTHOUSE_EXTRA_PATH is prepended to PATH without duplicates", () => {
+test("CDS_DESIGN_EXTRA_PATH is prepended to PATH without duplicates", () => {
   const env = { PATH: "/usr/bin:/bin:/usr/local/bin" };
-  assert.equal(extraPathPrefix("/Applications/Drafthouse.app/Contents/Resources/bin", env), [
-    "/Applications/Drafthouse.app/Contents/Resources/bin",
+  assert.equal(extraPathPrefix("/Applications/CDS Design.app/Contents/Resources/bin", env), [
+    "/Applications/CDS Design.app/Contents/Resources/bin",
     "/usr/bin",
     "/bin",
     "/usr/local/bin",
@@ -244,7 +244,7 @@ test("DRAFTHOUSE_EXTRA_PATH is prepended to PATH without duplicates", () => {
   // Windows 구분자 — 플랫폼은 파라미터로(mac 에서 win32 분기 검증).
   const win = { PATH: "C:\\Windows;C:\\Program Files\\nodejs" };
   assert.equal(
-    extraPathPrefix("C:\\Apps\\Drafthouse\\resources\\bin", win, "win32"),
-    ["C:\\Apps\\Drafthouse\\resources\\bin", "C:\\Windows", "C:\\Program Files\\nodejs"].join(";"),
+    extraPathPrefix("C:\\Apps\\CDS Design\\resources\\bin", win, "win32"),
+    ["C:\\Apps\\CDS Design\\resources\\bin", "C:\\Windows", "C:\\Program Files\\nodejs"].join(";"),
   );
 });
